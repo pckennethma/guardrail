@@ -1,0 +1,3 @@
+[submodule "lib/fastmecenumeration"]
+	path = lib/fastmecenumeration
+	url = https://github.com/pckennethma/fastmecenumeration.git
