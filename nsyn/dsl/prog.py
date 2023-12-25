@@ -1,5 +1,8 @@
 from typing import Any, Dict, List, Tuple
 
+import dask.dataframe as dd
+import pandas as pd
+
 from nsyn.dsl.stmt import DSLStmt
 from nsyn.util.base_model import BaseModel
 
@@ -77,6 +80,28 @@ class DSLProg(BaseModel):
         for stmt in self.stmts:
             expected_row.update(stmt.evaluate(input_row))
         return expected_row, expected_row != input_row
+
+    def evaluate_df(self, df: pd.DataFrame, worker_num: int = 4) -> pd.Series:
+        """
+        Evaluates the DSL program on a given DataFrame.
+
+        Args:
+            df (pd.DataFrame): A DataFrame to evaluate the DSL program on.
+
+        Returns:
+            pd.Series: A Series containing whether each row in the DataFrame mismatches the expected row.
+        """
+        ddf = dd.from_pandas(df, npartitions=worker_num)
+
+        def apply_row(row: pd.Series) -> bool:
+            return self.evaluate(row.to_dict())[1]
+
+        def apply_df(df: pd.DataFrame) -> pd.Series:
+            return df.apply(apply_row, axis=1)
+
+        res = ddf.map_partitions(apply_df).compute(schedule="processes")
+        assert isinstance(res, pd.Series)
+        return res
 
     def __str__(self) -> str:
         """

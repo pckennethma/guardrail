@@ -1,6 +1,8 @@
 import argparse
 import pickle
 
+import pandas as pd
+
 from nsyn.app.error_detector import ErrorDetector
 from nsyn.dataset.loader import load_data_by_name
 from nsyn.dsl.prog import DSLProg
@@ -13,16 +15,20 @@ logger = get_logger(name="nsyn.run")
 
 
 def run_search(
-    data_name: str,
+    data_name_or_df: str | pd.DataFrame,
     output_file: str,
 ) -> None:
-    data = load_data_by_name(data_name)
+    if isinstance(data_name_or_df, pd.DataFrame):
+        data = data_name_or_df
+    else:
+        data = load_data_by_name(data_name_or_df)
     sampler = AuxiliarySampler()
     learner = PC()
     search = Search.create(
         learning_algorithm=learner,
         sampling_algorithm=sampler,
         input_data=data,
+        epsilon=0.05,
     )
     result = search.run()
     assert isinstance(result, DSLProg)
@@ -87,6 +93,6 @@ if __name__ == "__main__":
         if args.output is None:
             raise ValueError("Must provide an output file for search")
         run_search(
-            data_name=args.data,
+            data_name_or_df=args.data,
             output_file=args.output,
         )

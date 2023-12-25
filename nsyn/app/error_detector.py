@@ -1,47 +1,16 @@
+import os
 from concurrent.futures import ProcessPoolExecutor
-from typing import Any, Dict, Hashable, List, Optional
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
 
+from nsyn.app.error import RowError
 from nsyn.dsl.prog import DSLProg
 from nsyn.util.base_model import BaseModel
 from nsyn.util.logger import get_logger
 
 logger = get_logger(name="nsyn.app.error_detector")
-
-# ANSI escape sequences for printing in color
-RED = "\033[91m"
-GREEN = "\033[92m"
-END = "\033[0m"
-
-
-class RowError(BaseModel):
-    """
-    A class to represent an error in a row of data.
-
-    Attributes:
-        row_index (Hashable): The index of the row in the original DataFrame.
-        original_row (Dict[str, Any]): The original row of data.
-        expected_row (Dict[str, Any]): The expected row of data.
-
-    Methods:
-        __str__: Provides a string representation of the error.
-    """
-
-    row_index: Hashable
-    original_row: Dict[str, Any]
-    expected_row: Dict[str, Any]
-
-    def __str__(self) -> str:
-        """
-        Use ANSI escape sequences to highlight the differences between the original and expected rows.
-        """
-        output = f"Index {self.row_index}:\n"
-        for key in self.original_row:
-            if self.original_row[key] != self.expected_row[key]:
-                output += f"{key}: {RED}{self.original_row[key]}{END} -> {GREEN}{self.expected_row[key]}{END}\n"
-        return output
 
 
 def partition_dataframe(df: pd.DataFrame, num_partitions: int) -> List[pd.DataFrame]:
@@ -78,7 +47,7 @@ class ErrorDetector(BaseModel):
 
     data: pd.DataFrame
     program: DSLProg
-    worker_num: int = 4
+    worker_num: int = int(os.getenv("NSYN_NUM_WORKERS", 4))
 
     def process_row(self, row: pd.Series) -> Optional[RowError]:
         """
