@@ -95,7 +95,6 @@ def inject_noise(
         else:
             # Directly assign NaN to a random subset of rows for numeric columns
             correct_df.loc[subsampled_indices, column] = np.nan
-        
 
     correct_df.to_csv(
         get_df_path_with_version(dataset_name, output_version), index=False

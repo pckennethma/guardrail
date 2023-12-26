@@ -38,7 +38,7 @@ mypy==1.6.1
 mypy-extensions==1.0.0
 networkx==3.1
 networkx-stubs==0.0.1
--e git+https://github.com/pckennethma/prog-syn.git@04b917edd219d65f3f46286d4349f3e51d6d8c5a#egg=nsyn
+-e git+https://github.com/pckennethma/prog-syn.git@0cff0235dfc33ec80389f90cd0173c3ed72fcf87#egg=nsyn
 numpy==1.26.0
 opt-einsum==3.3.0
 p-tqdm==1.4.0
@@ -72,6 +72,7 @@ scipy==1.11.3
 six==1.16.0
 statsmodels==0.14.0
 sympy==1.12
+tabulate @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_a301xhcsz1/croot/tabulate_1701354815389/work
 texttable==1.6.7
 threadpoolctl==3.2.0
 tomli==2.0.1

@@ -8,8 +8,12 @@ import pandas as pd
 from autogluon.tabular import TabularPredictor
 
 from nsyn.app.ml_backend.base import BaseModelConfig, InferenceModel
+from nsyn.app.ml_backend.postprocessing import postprocessing
 from nsyn.dsl.prog import DSLProg
-from nsyn.util.flags import DISABLE_SANITIZER_FLAG, SAN_RELEVANCE_ANALYSIS_FLAG
+from nsyn.util.flags import (
+    DISABLE_SANITIZER_FLAG,
+    SAN_RELEVANCE_ANALYSIS_FLAG,
+)
 from nsyn.util.logger import get_logger
 
 logger = get_logger(name="nsyn.app.ml_backend.autogluon")
@@ -132,14 +136,14 @@ class AutoGluonModel(InferenceModel):
         )
 
         if not SAN_RELEVANCE_ANALYSIS_FLAG:
-            return pred
+            return postprocessing(pred, sanitizer_alert)
 
         label = self.inference_model_config.label_column
         if label not in df.columns:
             logger.error(
                 f"Label column {label} not found in input data. Cannot perform relevance analysis."
             )
-            return pred
+            return postprocessing(pred, sanitizer_alert)
 
         prediction_errors = pred != df[label]
         prediction_error_num = prediction_errors.sum()
@@ -169,7 +173,7 @@ class AutoGluonModel(InferenceModel):
             {
                 "prediction_error": prediction_errors,
                 "sanitizer_alert": sanitizer_alert,
-                "noise_injection": noise_injected
+                "noise_injection": noise_injected,
             }
         )
 
@@ -184,4 +188,4 @@ class AutoGluonModel(InferenceModel):
 
         logger.info(f"SANITIZER_RELEVANCE_ANALYSIS:\n{relevance_df.corr()}")
 
-        return pred
+        return postprocessing(pred, sanitizer_alert)

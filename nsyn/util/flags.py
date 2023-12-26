@@ -23,3 +23,11 @@ DISABLE_SANITIZER_FLAG = (
 SAN_RELEVANCE_ANALYSIS_FLAG = (
     os.getenv("NSYN_Q2_RELEVANCE_ANALYSIS", "true").lower() == "true"
 )
+
+
+# This flag `ERROR_HANDLING_FLAG` is used to control the error handling
+# strategy during the execution of the Query 2.0. There are three options:
+# - ignore: ignore all errors (but log them) and continue the execution
+# - raise: raise an error and stop the execution
+# - coerce: set the value to NaN and continue the execution
+ERROR_HANDLING_FLAG = os.getenv("NSYN_Q2_ERROR_HANDLING", "ignore").lower()

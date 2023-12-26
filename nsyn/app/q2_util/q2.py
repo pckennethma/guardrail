@@ -147,12 +147,14 @@ class Query2(BaseModel):
         select_clause = main_query.split("SELECT")[1].split("FROM")[0]
         if "WHERE" in main_query:
             where_clause = main_query.split("WHERE")[1]
-            if "GROUP BY" in main_query:
+            if "GROUP BY" in where_clause:
                 where_clause = where_clause.split("GROUP BY")[0]
         else:
             where_clause = ""
         if "GROUP BY" in main_query:
             group_by_clause = main_query.split("GROUP BY")[1]
+            if "WHERE" in group_by_clause:
+                group_by_clause = group_by_clause.split("WHERE")[0]
         else:
             group_by_clause = ""
 
@@ -179,7 +181,7 @@ class Query2(BaseModel):
                 projection_model_agg_func = None
 
         legacy_proj_match = re.findall(
-            rf"(\w+)\({dataset_name}\.(\w+|\*)\)", select_clause
+            rf"(\w+)\({dataset_name}\.([\w-]+|\*)\)", select_clause
         )
         assert (
             len(legacy_proj_match) <= 1
@@ -196,6 +198,12 @@ class Query2(BaseModel):
             ), "Currently, at most one column can be selected."
             if legacy_proj_match:
                 legacy_projection_column = legacy_proj_match[0]
+            else:
+                # try count(*)
+                legacy_proj_match = re.findall(r"count\(\*\)", select_clause)
+                if legacy_proj_match:
+                    legacy_projection_agg_func = "count"
+                    legacy_projection_column = "*"
 
         # extract model from where clause
         where_model_match = re.findall(
