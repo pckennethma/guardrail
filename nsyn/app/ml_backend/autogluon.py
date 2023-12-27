@@ -9,10 +9,13 @@ from autogluon.tabular import TabularPredictor
 
 from nsyn.app.ml_backend.base import BaseModelConfig, InferenceModel
 from nsyn.app.ml_backend.postprocessing import postprocessing
+from nsyn.app.ml_backend.relevance_analysis import (
+    RelevanceAnalysisContext,
+    relevance_analysis,
+)
 from nsyn.dsl.prog import DSLProg
 from nsyn.util.flags import (
     DISABLE_SANITIZER_FLAG,
-    SAN_RELEVANCE_ANALYSIS_FLAG,
 )
 from nsyn.util.logger import get_logger
 
@@ -98,7 +101,9 @@ class AutoGluonModel(InferenceModel):
             sanitizer=sanitizer,
         )
 
-    def predict(self, df: pd.DataFrame) -> pd.Series:
+    def predict(
+        self, df: pd.DataFrame, ra_ctx: Optional[RelevanceAnalysisContext] = None
+    ) -> pd.Series:
         """
         Predicts the label of the given feature.
 
@@ -135,57 +140,12 @@ class AutoGluonModel(InferenceModel):
             f"Sanitizer found {sanitizer_alert.sum()} errors out of {len(sanitizer_alert)} rows of data."
         )
 
-        if not SAN_RELEVANCE_ANALYSIS_FLAG:
-            return postprocessing(pred, sanitizer_alert)
-
-        label = self.inference_model_config.label_column
-        if label not in df.columns:
-            logger.error(
-                f"Label column {label} not found in input data. Cannot perform relevance analysis."
-            )
-            return postprocessing(pred, sanitizer_alert)
-
-        prediction_errors = pred != df[label]
-        prediction_error_num = prediction_errors.sum()
-
-        logger.info(
-            f"Model mis-predicts {prediction_error_num} out of {len(df)} rows of data."
+        relevance_analysis(
+            df=df,
+            pred=pred,
+            sanitizer_alert=sanitizer_alert,
+            label_column=self.inference_model_config.label_column,
+            ra_ctx=ra_ctx,
         )
-
-        if "_nsyn_noisy_injected" not in df.columns:
-            noise_injected = pd.Series([False] * len(df))
-        else:
-            noise_injected = df["_nsyn_noisy_injected"]
-            logger.info(
-                f"Found {noise_injected.sum()} rows of data with injected noise."
-            )
-            detected_noise = sanitizer_alert & noise_injected
-            logger.info(
-                f"Out of {noise_injected.sum()} rows of data with injected noise, {detected_noise.sum()} are detected by sanitizer."
-            )
-            noise_induced_error = prediction_errors & noise_injected
-            noise_induced_error_num = noise_induced_error.sum()
-            logger.info(
-                f"Out of {prediction_error_num} prediction errors, {noise_induced_error_num} are induced by noise."
-            )
-
-        relevance_df = pd.DataFrame(
-            {
-                "prediction_error": prediction_errors,
-                "sanitizer_alert": sanitizer_alert,
-                "noise_injection": noise_injected,
-            }
-        )
-
-        detected_error_num = relevance_df[
-            (relevance_df["sanitizer_alert"] == True)  # noqa: E712
-            & (relevance_df["prediction_error"] == True)  # noqa: E712
-        ].shape[0]
-
-        logger.info(
-            f"{detected_error_num} prediction errors are detected by sanitizer."
-        )
-
-        logger.info(f"SANITIZER_RELEVANCE_ANALYSIS:\n{relevance_df.corr()}")
 
         return postprocessing(pred, sanitizer_alert)

@@ -1,11 +1,12 @@
 import os
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from pandas.core.groupby.generic import DataFrameGroupBy
 
 from nsyn.app.ml_backend.auto import get_inference_model
+from nsyn.app.ml_backend.relevance_analysis import RelevanceAnalysisContext
 from nsyn.app.q2_util.q2_grammar import _T_MODEL, Query2
 from nsyn.dataset.loader import load_data_by_name, load_data_by_name_and_vers
 from nsyn.util.color import get_keyword_text
@@ -29,10 +30,11 @@ class Q2Executor:
             df = load_data_by_name(query.dataset_name)
             logger.info(f"Loaded dataset {query.dataset_name}")
         assert isinstance(df, pd.DataFrame), "Expected DataFrame"
+        ra_ctxs = RelevanceAnalysisContext.create_contexts(query)
         # perform selection filtering first
         df = Q2Executor._legacy_selection_filter(query.legacy_selection_filters, df)
         df = Q2Executor._model_selection_filter(
-            query.selection_models, query.selection_model_conditions, df
+            query.selection_models, query.selection_model_conditions, df, ra_ctxs
         )
         # perform group by & projection
         if query.legacy_group_by_column is not None or query.group_by_model is not None:
@@ -50,8 +52,11 @@ class Q2Executor:
                     query.group_by_model,
                     query.group_by_partition_threshold,
                     df,
+                    ra_ctxs,
                 )
             assert isinstance(df_grouped, DataFrameGroupBy)
+            group_names: List[Any] = []
+            aggregated_values: list[float] = []
             if (
                 query.legacy_projection_column is not None
                 and query.legacy_projection_agg_func is not None
@@ -81,13 +86,20 @@ class Q2Executor:
                     query.projection_model[0], query.projection_model[1]
                 )
                 model_label = inference_engine.inference_model_config.label_column
-                # make sure prediction with NaN values are dropped
-                df = (
-                    df_grouped.apply(lambda x: inference_engine.predict(x).dropna())
-                    .agg(query.projection_model_agg_func)
-                    .reset_index(
-                        name=f"{query.projection_model_agg_func}({model_label} [predicted])"
+                for group_name, group_df in df_grouped:
+                    group_names.append(group_name)
+                    aggregated_values.append(
+                        inference_engine.predict(
+                            group_df, ra_ctxs[query.projection_model[0]]
+                        )
+                        .dropna()
+                        .agg(query.projection_model_agg_func)
                     )
+                df = pd.DataFrame(
+                    {
+                        query.legacy_group_by_column: group_names,
+                        f"{query.projection_model_agg_func}({model_label} [predicted])": aggregated_values,
+                    }
                 )
             elif (
                 query.projection_model is None
@@ -103,17 +115,22 @@ class Q2Executor:
                     projection_model_with_case_when.model[1],
                 )
                 model_label = inference_engine.inference_model_config.label_column
-                # make sure prediction with NaN values are dropped
-                df = (
-                    df_grouped.apply(
-                        lambda x: inference_engine.predict(x)
-                        .dropna()
+
+                for group_name, group_df in df_grouped:
+                    group_names.append(group_name)
+                    aggregated_values.append(
+                        inference_engine.predict(
+                            group_df, ra_ctxs[projection_model_with_case_when.model[0]]
+                        )
                         .apply(projection_model_with_case_when.get_lambda())
+                        .dropna()
+                        .agg(query.projection_model_agg_func)
                     )
-                    .agg(query.projection_model_agg_func)
-                    .reset_index(
-                        name=f"{query.projection_model_agg_func}({model_label} [predicted])"
-                    )
+                df = pd.DataFrame(
+                    {
+                        query.legacy_group_by_column: group_names,
+                        f"{query.projection_model_agg_func}({model_label} [predicted] {projection_model_with_case_when.condition})": aggregated_values,
+                    }
                 )
             else:
                 raise ValueError("Invalid query")
@@ -163,9 +180,9 @@ class Q2Executor:
                 inference_engine = get_inference_model(
                     query.projection_model[0], query.projection_model[1]
                 )
-                agg_val = inference_engine.predict(df).agg(
-                    query.projection_model_agg_func
-                )
+                agg_val = inference_engine.predict(
+                    df, ra_ctxs[query.projection_model[0]]
+                ).agg(query.projection_model_agg_func)
                 model_label = inference_engine.inference_model_config.label_column
                 df = pd.DataFrame(
                     {
@@ -186,7 +203,9 @@ class Q2Executor:
                     query.projection_model[0], query.projection_model[1]
                 )
                 model_label = inference_engine.inference_model_config.label_column
-                df["{model_label} [predicted]"] = inference_engine.predict(df)
+                df[f"{model_label} [predicted]"] = inference_engine.predict(
+                    df, ra_ctxs[query.projection_model[0]]
+                )
                 # move the predicted column to the front
                 df = df[
                     [
@@ -208,14 +227,16 @@ class Q2Executor:
                     projection_model_with_case_when.model[1],
                 )
                 agg_val = (
-                    inference_engine.predict(df)
+                    inference_engine.predict(
+                        df, ra_ctxs[projection_model_with_case_when.model[0]]
+                    )
                     .apply(projection_model_with_case_when.get_lambda())
                     .agg(query.projection_model_agg_func)
                 )
                 model_label = inference_engine.inference_model_config.label_column
                 df = pd.DataFrame(
                     {
-                        f"{query.projection_model_agg_func}({model_label} [predicted])": [
+                        f"{query.projection_model_agg_func}({model_label} [predicted] {projection_model_with_case_when.condition})": [
                             agg_val
                         ]
                     }
@@ -234,14 +255,23 @@ class Q2Executor:
                     projection_model_with_case_when.model[1],
                 )
                 model_label = inference_engine.inference_model_config.label_column
-                df[f"{model_label} [predicted]"] = inference_engine.predict(df).apply(
+                df[
+                    f"{model_label} [predicted] {projection_model_with_case_when.condition}"
+                ] = inference_engine.predict(
+                    df, ra_ctxs[projection_model_with_case_when.model[0]]
+                ).apply(
                     projection_model_with_case_when.get_lambda()
                 )
                 # move the predicted column to the front
                 df = df[
                     [
-                        f"{model_label} [predicted]",
-                        *[c for c in df.columns if c != f"{model_label} [predicted]"],
+                        f"{model_label} [predicted] {projection_model_with_case_when.condition}",
+                        *[
+                            c
+                            for c in df.columns
+                            if c
+                            != f"{model_label} [predicted] {projection_model_with_case_when.condition}"
+                        ],
                     ]
                 ]
             else:
@@ -272,6 +302,7 @@ class Q2Executor:
         selection_models: Optional[List[_T_MODEL]],
         selection_model_conditions: Optional[List[str]],
         df: pd.DataFrame,
+        ra_ctxs: Dict[str, RelevanceAnalysisContext],
     ) -> pd.DataFrame:
         """
         Apply model selection filters to a DataFrame.
@@ -288,7 +319,7 @@ class Q2Executor:
             inference_engine = get_inference_model(model[0], model[1])
             # TODO: this is a hacky way to handle string conditions; a method
             # similar to `np.safe_eval` should be used
-            eval_result = inference_engine.predict(df).apply(
+            eval_result = inference_engine.predict(df, ra_ctxs[model[0]]).apply(
                 lambda x: eval(f"{repr(x)} {condition}")
             )
             df = df[eval_result]
@@ -300,6 +331,7 @@ class Q2Executor:
         group_by_model: _T_MODEL,
         group_by_partition_threshold: Optional[float],
         df: pd.DataFrame,
+        ra_ctxs: Dict[str, RelevanceAnalysisContext],
     ) -> DataFrameGroupBy:
         """
         Group a DataFrame by a model.
@@ -313,7 +345,7 @@ class Q2Executor:
             DataFrameGroupBy: The grouped DataFrame.
         """
         inference_engine = get_inference_model(group_by_model[0], group_by_model[1])
-        pred_result = inference_engine.predict(df)
+        pred_result = inference_engine.predict(df, ra_ctxs[group_by_model[0]])
         if group_by_partition_threshold is not None:
             # Create formatted strings
             greater_than_str = f"> {group_by_partition_threshold}"
@@ -348,16 +380,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--query_folder",
-        "-f",
-        type=str,
-        help="The folder containing the query file. If specified, the following arguments will be ignored.",
-    )
-    parser.add_argument(
         "--query_path",
         "-p",
         type=str,
-        help="The path to the query file. If specified, the following arguments will be ignored.",
+        help="The path to the query file. It can be either a single query file or a folder containing multiple query files (with .sql extension). If specified, the following arguments will be ignored.",
     )
     parser.add_argument(
         "--query",
@@ -368,7 +394,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.query_folder is not None:
+    if args.query_path is not None and os.path.isdir(args.query_path):
         # list all txt files in the folder
         logger.info(f"Executing all queries in {args.query_folder}")
         query_list = [
@@ -385,7 +411,9 @@ if __name__ == "__main__":
                 df = Q2Executor.execute_query(query)
                 logger.info(f"Query: {get_keyword_text(query.main_query)}")
                 logger.info(f"Result df:\n{df.to_markdown()}")
-    elif args.query_path is not None or args.query is not None:
+    elif (
+        args.query_path is not None and os.path.isfile(args.query_path)
+    ) or args.query is not None:
         if args.query_path is not None:
             with open(args.query_path, "r") as f:
                 query = Query2.parse_query(f.read())

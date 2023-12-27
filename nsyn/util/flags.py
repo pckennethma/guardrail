@@ -1,4 +1,5 @@
 import os
+from uuid import uuid4
 
 # This flag `DISABLE_SANITIZER_FLAG` is used to control whether or not to
 # sanitize ML predictions during the execution of the Query 2.0. The flag is
@@ -23,7 +24,9 @@ DISABLE_SANITIZER_FLAG = (
 SAN_RELEVANCE_ANALYSIS_FLAG = (
     os.getenv("NSYN_Q2_RELEVANCE_ANALYSIS", "true").lower() == "true"
 )
-
+SAN_RELEVANCE_ANALYSIS_JSONL_PATH = os.getenv(
+    "NSYN_Q2_RELEVANCE_ANALYSIS_CSV_PATH", f"ra-{uuid4()}.jsonl"
+)
 
 # This flag `ERROR_HANDLING_FLAG` is used to control the error handling
 # strategy during the execution of the Query 2.0. There are three options:

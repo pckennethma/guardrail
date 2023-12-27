@@ -163,3 +163,5 @@ cython_debug/
 
 models/
 .DS_Store
+
+ra-*.jsonl

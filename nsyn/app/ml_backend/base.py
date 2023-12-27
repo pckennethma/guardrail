@@ -5,6 +5,7 @@ from typing import List, Literal, Optional
 
 import pandas as pd
 
+from nsyn.app.ml_backend.relevance_analysis import RelevanceAnalysisContext
 from nsyn.dsl.prog import DSLProg
 from nsyn.util.base_model import BaseModel
 
@@ -30,5 +31,7 @@ class InferenceModel(ABC, BaseModel):
         ...
 
     @abstractmethod
-    def predict(self, df: pd.DataFrame) -> pd.Series:
+    def predict(
+        self, df: pd.DataFrame, ra_ctx: Optional[RelevanceAnalysisContext] = None
+    ) -> pd.Series:
         ...

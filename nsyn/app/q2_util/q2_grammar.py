@@ -83,20 +83,19 @@ class CaseWhen(BaseModel):
     @classmethod
     def create(
         cls,
-        raw_model: str,
-        raw_condition: str,
+        raw_model_and_condition: str,
         raw_true_outcome: str,
         raw_false_outcome: str,
         model_info: Dict[int, _T_MODEL],
     ) -> CaseWhen:
-        model_num = int(raw_model[1:])
         case_when_condition_match = cast(
-            List[List[str]], re.findall(WHERE_MODEL_MATCH_PATTERN, raw_condition)
+            List[List[str]], WHERE_MODEL_MATCH_PATTERN.findall(raw_model_and_condition)
         )
         assert (
             len(case_when_condition_match) == 1
         ), "Must have one condition in case when clause."
-        _, op, val = case_when_condition_match[0]
+        raw_model_num, op, val = case_when_condition_match[0]
+        model_num = int(raw_model_num[1:])
         condition = f"{op} {val}"
         true_outcome, false_outcome = int(raw_true_outcome), int(raw_false_outcome)
         return cls(
@@ -199,7 +198,7 @@ class Query2(BaseModel):
         query = query.strip()
         main_query = query.split("\n")[0]
         raw_model_info = query[len(main_query) :].strip()
-        model_matches = re.findall(MODEL_MATCH_PATTERN, raw_model_info)
+        model_matches = MODEL_MATCH_PATTERN.findall(raw_model_info)
         model_info: Dict[int, _T_MODEL] = {
             int(model_num): (model_path, model_type)
             for model_num, model_path, model_type in model_matches
@@ -213,6 +212,7 @@ class Query2(BaseModel):
         assert (
             clause_match
         ), f"The query: {main_query} is not valid during clause parsing."
+
         if clause_match:
             (
                 select_clause,
@@ -249,19 +249,19 @@ class Query2(BaseModel):
 
         agg_case_when_match = cast(
             List[List[str]],
-            re.findall(AGG_CASE_WHEN_MODEL_MATCH_PATTERN, select_clause),
+            AGG_CASE_WHEN_MODEL_MATCH_PATTERN.findall(select_clause),
         )
         raw_case_when_match = cast(
             List[List[str]],
-            re.findall(RAW_CASE_WHEN_MODEL_MATCH_PATTERN, select_clause),
+            RAW_CASE_WHEN_MODEL_MATCH_PATTERN.findall(select_clause),
         )
         agg_proj_model_match = cast(
             List[List[str]],
-            re.findall(AGG_PROJECTION_MODEL_MATCH_PATTERN, select_clause),
+            AGG_PROJECTION_MODEL_MATCH_PATTERN.findall(select_clause),
         )
         raw_proj_model_match = cast(
             List[List[str]],
-            re.findall(RAW_PROJECTION_MODEL_MATCH_PATTERN, select_clause),
+            RAW_PROJECTION_MODEL_MATCH_PATTERN.findall(select_clause),
         )
         agg_legacy_proj_match = cast(
             List[List[str]],
@@ -274,26 +274,20 @@ class Query2(BaseModel):
         count_all_match = re.findall(r"count\(\*\)", select_clause)
 
         if agg_case_when_match or raw_case_when_match:
-            assert not (
-                agg_case_when_match and raw_case_when_match
-            ), "Should not have both legacy and non-legacy projection."
             if agg_case_when_match:
                 raw_agg_func = agg_case_when_match[0][0]
-                raw_model_num = agg_case_when_match[0][1]
-                raw_condition = agg_case_when_match[0][2]
-                raw_true_outcome = agg_case_when_match[0][3]
-                raw_false_outcome = agg_case_when_match[0][4]
+                raw_model_and_condition = agg_case_when_match[0][1]
+                raw_true_outcome = agg_case_when_match[0][2]
+                raw_false_outcome = agg_case_when_match[0][3]
                 projection_model_agg_func = _fix_agg_func(raw_agg_func)
             elif raw_case_when_match:
-                raw_model_num = raw_case_when_match[0][0]
-                raw_condition = raw_case_when_match[0][1]
-                raw_true_outcome = raw_case_when_match[0][2]
-                raw_false_outcome = raw_case_when_match[0][3]
+                raw_model_and_condition = raw_case_when_match[0][0]
+                raw_true_outcome = raw_case_when_match[0][1]
+                raw_false_outcome = raw_case_when_match[0][2]
             else:
                 raise ValueError("Should not reach here.")
             projection_model_with_case_when = CaseWhen.create(
-                raw_model=raw_model_num,
-                raw_condition=raw_condition,
+                raw_model_and_condition=raw_model_and_condition,
                 raw_true_outcome=raw_true_outcome,
                 raw_false_outcome=raw_false_outcome,
                 model_info=model_info,
@@ -341,16 +335,20 @@ class Query2(BaseModel):
             raise ValueError("Should not reach here.")
 
         # extract model from where clause
-        where_model_match = cast(
-            List[List[str]], re.findall(WHERE_MODEL_MATCH_PATTERN, where_clause)
-        )
-        legacy_selection_filter_matches = cast(
-            List[List[str]],
-            re.findall(
-                rf"{dataset_name}\.(\w+)\s*(==|!=|>|<|>=|<=)\s*('[^']*'|\"[^\"]*\"|\d+)",
-                where_clause,
-            ),
-        )
+        if where_clause:
+            where_model_match = cast(
+                List[List[str]], WHERE_MODEL_MATCH_PATTERN.findall(where_clause)
+            )
+            legacy_selection_filter_matches = cast(
+                List[List[str]],
+                re.findall(
+                    rf"{dataset_name}\.(\w+)\s*(==|!=|>|<|>=|<=)\s*('[^']*'|\"[^\"]*\"|\d+)",
+                    where_clause,
+                ),
+            )
+        else:
+            where_model_match = []
+            legacy_selection_filter_matches = []
         if where_model_match:
             # save in the format of [("M1", "> 0.5"), ("M2", "== 'yes'")]
             selection_models = [
@@ -368,12 +366,16 @@ class Query2(BaseModel):
             ]
 
         # extract model from group by clause
-        group_by_model_match = cast(
-            List[str], re.findall(GROUP_BY_MODEL_MATCH_PATTERN, group_by_clause)
-        )
-        legacy_group_by_match = cast(
-            List[str], re.findall(rf"{dataset_name}\.(\w+)", group_by_clause)
-        )
+        if group_by_clause:
+            group_by_model_match = cast(
+                List[str], GROUP_BY_MODEL_MATCH_PATTERN.findall(group_by_clause)
+            )
+            legacy_group_by_match = cast(
+                List[str], re.findall(rf"{dataset_name}\.(\w+)", group_by_clause)
+            )
+        else:
+            group_by_model_match = []
+            legacy_group_by_match = []
         if group_by_model_match:
             assert (
                 len(group_by_model_match) == 1
@@ -395,7 +397,7 @@ class Query2(BaseModel):
             ), "Currently, at most one column can be selected."
             legacy_group_by_column = legacy_group_by_match[0]
         else:
-            raise ValueError("Should not reach here.")
+            logger.warning("No group by model or column is specified.")
 
         return cls(
             dataset_name=dataset_name,
