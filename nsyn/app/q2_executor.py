@@ -6,8 +6,9 @@ import pandas as pd
 from pandas.core.groupby.generic import DataFrameGroupBy
 
 from nsyn.app.ml_backend.auto import get_inference_model
-from nsyn.app.q2_util.q2 import _T_MODEL, Query2
+from nsyn.app.q2_util.q2_grammar import _T_MODEL, Query2
 from nsyn.dataset.loader import load_data_by_name, load_data_by_name_and_vers
+from nsyn.util.color import get_keyword_text
 from nsyn.util.logger import get_logger
 
 logger = get_logger(name="nsyn.app.q2_util.executor")
@@ -68,7 +69,11 @@ class Q2Executor:
                             name=f"{query.legacy_projection_agg_func}({query.legacy_projection_column})"
                         )
                     )
-            elif query.projection_model is not None and query.projection_model_agg_func:
+            elif (
+                query.projection_model is not None
+                and query.projection_model_agg_func is not None
+                and query.projection_model_with_case_when is None
+            ):
                 logger.info(
                     f"Applying model projection {query.projection_model} with agg func {query.projection_model_agg_func}"
                 )
@@ -84,10 +89,39 @@ class Q2Executor:
                         name=f"{query.projection_model_agg_func}({model_label} [predicted])"
                     )
                 )
+            elif (
+                query.projection_model is None
+                and query.projection_model_agg_func is not None
+                and query.projection_model_with_case_when is not None
+            ):
+                logger.info(
+                    f"Applying model projection with case when clause {query.projection_model_with_case_when} with agg func {query.projection_model_agg_func}"
+                )
+                projection_model_with_case_when = query.projection_model_with_case_when
+                inference_engine = get_inference_model(
+                    projection_model_with_case_when.model[0],
+                    projection_model_with_case_when.model[1],
+                )
+                model_label = inference_engine.inference_model_config.label_column
+                # make sure prediction with NaN values are dropped
+                df = (
+                    df_grouped.apply(
+                        lambda x: inference_engine.predict(x)
+                        .dropna()
+                        .apply(projection_model_with_case_when.get_lambda())
+                    )
+                    .agg(query.projection_model_agg_func)
+                    .reset_index(
+                        name=f"{query.projection_model_agg_func}({model_label} [predicted])"
+                    )
+                )
             else:
                 raise ValueError("Invalid query")
         else:
-            if query.legacy_projection_column == "*":
+            if (
+                query.legacy_projection_column == "*"
+                and query.legacy_projection_agg_func is None
+            ):
                 logger.info("Applying legacy projection column *")
                 df = df
             elif (
@@ -97,10 +131,19 @@ class Q2Executor:
                 logger.info(
                     f"Applying legacy projection column {query.legacy_projection_column} with agg func {query.legacy_projection_agg_func}"
                 )
-                df = df[[query.legacy_projection_column]]
-                df = df.agg(query.legacy_projection_agg_func).reset_index(
-                    name=f"{query.legacy_projection_agg_func}({query.legacy_projection_column})"
-                )
+                if query.legacy_projection_agg_func == "count":
+                    df = pd.DataFrame(
+                        {
+                            f"{query.legacy_projection_agg_func}({query.legacy_projection_column})": [
+                                len(df)
+                            ]
+                        }
+                    )
+                else:
+                    df = df[[query.legacy_projection_column]]
+                    df = df.agg(query.legacy_projection_agg_func).reset_index(
+                        name=f"{query.legacy_projection_agg_func}({query.legacy_projection_column})"
+                    )
             elif (
                 query.legacy_projection_column is not None
                 and query.legacy_projection_agg_func is None
@@ -112,6 +155,7 @@ class Q2Executor:
             elif (
                 query.projection_model is not None
                 and query.projection_model_agg_func is not None
+                and query.projection_model_with_case_when is None
             ):
                 logger.info(
                     f"Applying model projection {query.projection_model} with agg func {query.projection_model_agg_func}"
@@ -133,6 +177,7 @@ class Q2Executor:
             elif (
                 query.projection_model is not None
                 and query.projection_model_agg_func is None
+                and query.projection_model_with_case_when is None
             ):
                 logger.info(
                     f"Applying model projection {query.projection_model} with agg func {query.projection_model_agg_func}"
@@ -141,9 +186,64 @@ class Q2Executor:
                     query.projection_model[0], query.projection_model[1]
                 )
                 model_label = inference_engine.inference_model_config.label_column
-                df = inference_engine.predict(df).reset_index(
-                    name=f"{model_label} [predicted]"
+                df["{model_label} [predicted]"] = inference_engine.predict(df)
+                # move the predicted column to the front
+                df = df[
+                    [
+                        f"{model_label} [predicted]",
+                        *[c for c in df.columns if c != f"{model_label} [predicted]"],
+                    ]
+                ]
+            elif (
+                query.projection_model is None
+                and query.projection_model_agg_func is not None
+                and query.projection_model_with_case_when is not None
+            ):
+                logger.info(
+                    f"Applying model projection with case when clause {query.projection_model_with_case_when} with agg func {query.projection_model_agg_func}"
                 )
+                projection_model_with_case_when = query.projection_model_with_case_when
+                inference_engine = get_inference_model(
+                    projection_model_with_case_when.model[0],
+                    projection_model_with_case_when.model[1],
+                )
+                agg_val = (
+                    inference_engine.predict(df)
+                    .apply(projection_model_with_case_when.get_lambda())
+                    .agg(query.projection_model_agg_func)
+                )
+                model_label = inference_engine.inference_model_config.label_column
+                df = pd.DataFrame(
+                    {
+                        f"{query.projection_model_agg_func}({model_label} [predicted])": [
+                            agg_val
+                        ]
+                    }
+                )
+            elif (
+                query.projection_model is None
+                and query.projection_model_agg_func is None
+                and query.projection_model_with_case_when is not None
+            ):
+                logger.info(
+                    f"Applying model projection with case when clause {query.projection_model_with_case_when} without agg func."
+                )
+                projection_model_with_case_when = query.projection_model_with_case_when
+                inference_engine = get_inference_model(
+                    projection_model_with_case_when.model[0],
+                    projection_model_with_case_when.model[1],
+                )
+                model_label = inference_engine.inference_model_config.label_column
+                df[f"{model_label} [predicted]"] = inference_engine.predict(df).apply(
+                    projection_model_with_case_when.get_lambda()
+                )
+                # move the predicted column to the front
+                df = df[
+                    [
+                        f"{model_label} [predicted]",
+                        *[c for c in df.columns if c != f"{model_label} [predicted]"],
+                    ]
+                ]
             else:
                 raise ValueError("Invalid query")
         return df
@@ -274,7 +374,7 @@ if __name__ == "__main__":
         query_list = [
             os.path.join(args.query_folder, f)
             for f in os.listdir(args.query_folder)
-            if os.path.isfile(os.path.join(args.query_folder, f)) and f.endswith(".txt")
+            if os.path.isfile(os.path.join(args.query_folder, f)) and f.endswith(".sql")
         ]
         query_list.sort()
         logger.info(f"Found {len(query_list)} queries.")
@@ -283,6 +383,7 @@ if __name__ == "__main__":
                 logger.info(f"Executing query in {query_path} ...")
                 query = Query2.parse_query(f.read())
                 df = Q2Executor.execute_query(query)
+                logger.info(f"Query: {get_keyword_text(query.main_query)}")
                 logger.info(f"Result df:\n{df.to_markdown()}")
     elif args.query_path is not None or args.query is not None:
         if args.query_path is not None:

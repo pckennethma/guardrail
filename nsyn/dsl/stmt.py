@@ -7,8 +7,8 @@ import pandas as pd
 from nsyn.dsl.assign import DSLAssign
 from nsyn.dsl.branch import DSLBranch
 from nsyn.dsl.condition import DSLCondition
-from nsyn.dsl.util import get_keyword_text
 from nsyn.util.base_model import BaseModel
+from nsyn.util.color import get_keyword_text
 
 # Predefine formatted strings for keywords
 GIVEN_str = get_keyword_text("GIVEN")

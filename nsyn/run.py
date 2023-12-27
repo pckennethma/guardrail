@@ -1,10 +1,11 @@
 import argparse
 import pickle
+from typing import cast
 
 import pandas as pd
 
 from nsyn.app.error_detector import ErrorDetector
-from nsyn.dataset.loader import load_data_by_name
+from nsyn.dataset.loader import load_data_by_name, load_ml_data_by_name
 from nsyn.dsl.prog import DSLProg
 from nsyn.learner import PC
 from nsyn.sampler import AuxiliarySampler
@@ -21,7 +22,7 @@ def run_search(
     if isinstance(data_name_or_df, pd.DataFrame):
         data = data_name_or_df
     else:
-        data = load_data_by_name(data_name_or_df)
+        data = cast(pd.DataFrame, load_ml_data_by_name(data_name_or_df, "train"))
     sampler = AuxiliarySampler()
     learner = PC()
     search = Search.create(

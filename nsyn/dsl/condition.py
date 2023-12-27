@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Tuple
 
-from nsyn.dsl.util import get_keyword_text
 from nsyn.util.base_model import BaseModel
+from nsyn.util.color import get_keyword_text
 
 AND_str = get_keyword_text("AND")
 EQ_str = get_keyword_text("=")

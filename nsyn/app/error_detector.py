@@ -5,7 +5,7 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
-from nsyn.app.error import RowError
+from nsyn.app.error_detector_util.error import RowError
 from nsyn.dsl.prog import DSLProg
 from nsyn.util.base_model import BaseModel
 from nsyn.util.logger import get_logger

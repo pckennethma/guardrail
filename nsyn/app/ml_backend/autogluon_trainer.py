@@ -115,9 +115,13 @@ if __name__ == "__main__":
         feature_columns = args.feature_columns
         disable_synthesizer = args.disable_synthesizer
 
-    main(
-        dataset_name=dataset_name,
-        label_column=label_column,
-        feature_columns=feature_columns,
-        disable_synthesizer=disable_synthesizer,
-    )
+    if dataset_name is not None:
+        main(
+            dataset_name=dataset_name,
+            label_column=label_column,
+            feature_columns=feature_columns,
+            disable_synthesizer=disable_synthesizer,
+        )
+    else:
+        # print help message
+        parser.print_help()

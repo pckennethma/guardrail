@@ -1,7 +1,7 @@
 from typing import Any
 
-from nsyn.dsl.util import get_keyword_text
 from nsyn.util.base_model import BaseModel
+from nsyn.util.color import get_keyword_text
 
 ASSIGN_str = get_keyword_text("<-")
 

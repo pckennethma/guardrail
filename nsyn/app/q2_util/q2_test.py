@@ -1,6 +1,6 @@
 import unittest
 
-from nsyn.app.q2_util.q2 import Query2
+from nsyn.app.q2_util.q2_grammar import Query2
 
 
 class TestQuery2Parsing(unittest.TestCase):

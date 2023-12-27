@@ -5,6 +5,7 @@ import pandas as pd
 
 _DATASET_PATH = {
     "adult": "datasets/adult.csv",
+    "lung_cancer": "datasets/lung_cancer.csv",
 }
 
 
