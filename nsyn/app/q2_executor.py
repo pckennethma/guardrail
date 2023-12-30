@@ -1,18 +1,21 @@
 import os
-from typing import Any, Dict, List, Optional, Tuple
+import re
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from pandas.core.groupby.generic import DataFrameGroupBy
 
+from nsyn.app.ml_backend.analysis import AnalysisContext
 from nsyn.app.ml_backend.auto import get_inference_model
-from nsyn.app.ml_backend.relevance_analysis import RelevanceAnalysisContext
 from nsyn.app.q2_util.q2_grammar import _T_MODEL, Query2
 from nsyn.dataset.loader import load_data_by_name, load_data_by_name_and_vers
-from nsyn.util.color import get_keyword_text
+from nsyn.util.color import get_keyword_text, get_output_df_text
 from nsyn.util.logger import get_logger
 
 logger = get_logger(name="nsyn.app.q2_util.executor")
+
+CONDITION_MATCH_PATTERN = re.compile(r"(==|!=|>|<|>=|<=)\s*('[^']*'|\"[^\"]*\"|\d+)")
 
 
 class Q2Executor:
@@ -30,7 +33,7 @@ class Q2Executor:
             df = load_data_by_name(query.dataset_name)
             logger.info(f"Loaded dataset {query.dataset_name}")
         assert isinstance(df, pd.DataFrame), "Expected DataFrame"
-        ra_ctxs = RelevanceAnalysisContext.create_contexts(query)
+        ra_ctxs = AnalysisContext.create_contexts(query)
         # perform selection filtering first
         df = Q2Executor._legacy_selection_filter(query.legacy_selection_filters, df)
         df = Q2Executor._model_selection_filter(
@@ -62,10 +65,10 @@ class Q2Executor:
                 and query.legacy_projection_agg_func is not None
             ):
                 logger.info(
-                    f"Applying legacy projection column {query.legacy_projection_column} with agg func {query.legacy_projection_agg_func}"
+                    f"debug Applying legacy projection column {query.legacy_projection_column} with agg func {query.legacy_projection_agg_func}"
                 )
                 if query.legacy_projection_agg_func == "count":
-                    df = df_grouped.size().reset_index(name="count")
+                    df = df_grouped.size().reset_index(name="count(*)")
                 else:
                     df = (
                         df_grouped[query.legacy_projection_column]
@@ -291,9 +294,10 @@ class Q2Executor:
             f"Applying legacy selection filters: {filters} on df with shape {df.shape}"
         )
         for column, condition in filters:
-            # TODO: this is a hacky way to handle string conditions; a method
-            # similar to `np.safe_eval` should be used
-            df = df[df[column].apply(lambda x: eval(f"{repr(x)} {condition}"))]
+            safe_eval_func = Q2Executor._get_safe_eval(
+                condition, df[column].dtype == bool
+            )
+            df = df[df[column].apply(safe_eval_func)]
         logger.info(f"Result df: {df.shape}")
         return df
 
@@ -302,7 +306,7 @@ class Q2Executor:
         selection_models: Optional[List[_T_MODEL]],
         selection_model_conditions: Optional[List[str]],
         df: pd.DataFrame,
-        ra_ctxs: Dict[str, RelevanceAnalysisContext],
+        ra_ctxs: Dict[str, AnalysisContext],
     ) -> pd.DataFrame:
         """
         Apply model selection filters to a DataFrame.
@@ -317,11 +321,9 @@ class Q2Executor:
         )
         for model, condition in zip(selection_models, selection_model_conditions):
             inference_engine = get_inference_model(model[0], model[1])
-            # TODO: this is a hacky way to handle string conditions; a method
-            # similar to `np.safe_eval` should be used
-            eval_result = inference_engine.predict(df, ra_ctxs[model[0]]).apply(
-                lambda x: eval(f"{repr(x)} {condition}")
-            )
+            pred = inference_engine.predict(df, ra_ctxs[model[0]])
+            safe_eval_func = Q2Executor._get_safe_eval(condition, pred.dtype == bool)
+            eval_result = pred.apply(safe_eval_func)
             df = df[eval_result]
         logger.info(f"Result df: {df.shape}")
         return df
@@ -331,7 +333,7 @@ class Q2Executor:
         group_by_model: _T_MODEL,
         group_by_partition_threshold: Optional[float],
         df: pd.DataFrame,
-        ra_ctxs: Dict[str, RelevanceAnalysisContext],
+        ra_ctxs: Dict[str, AnalysisContext],
     ) -> DataFrameGroupBy:
         """
         Group a DataFrame by a model.
@@ -374,6 +376,47 @@ class Q2Executor:
         grouped_df = df.groupby(f"{model_label} [predicted]", dropna=False)
         return grouped_df
 
+    @staticmethod
+    def _get_safe_eval(
+        condition: str,
+        is_bool: bool,
+    ) -> Callable[[Any], bool]:
+        """
+        Get a safe eval function for a condition.
+        """
+
+        match = CONDITION_MATCH_PATTERN.match(condition)
+        assert match is not None, f"Invalid condition: {condition}"
+        op, val2 = match.groups()
+        assert isinstance(val2, str)
+        true_val2 = np.safe_eval(val2)
+        if isinstance(true_val2, str) and is_bool:
+            boolean_flag = true_val2.lower() in [
+                "true",
+                "false",
+            ]
+        else:
+            boolean_flag = False
+        boolean_true_val2 = bool(true_val2)
+        if op == "==" and boolean_flag:
+            return lambda val: val == boolean_true_val2
+        elif op == "!=" and boolean_flag:
+            return lambda val: val != boolean_true_val2
+        elif op == "==" and not boolean_flag:
+            return lambda val: val == true_val2
+        elif op == "!=" and not boolean_flag:
+            return lambda val: val != true_val2
+        elif op == ">":
+            return lambda val: val > true_val2
+        elif op == "<":
+            return lambda val: val < true_val2
+        elif op == ">=":
+            return lambda val: val >= true_val2
+        elif op == "<=":
+            return lambda val: val <= true_val2
+        else:
+            raise ValueError(f"Invalid operator: {op} in condition: {condition}")
+
 
 if __name__ == "__main__":
     import argparse
@@ -396,11 +439,11 @@ if __name__ == "__main__":
 
     if args.query_path is not None and os.path.isdir(args.query_path):
         # list all txt files in the folder
-        logger.info(f"Executing all queries in {args.query_folder}")
+        logger.info(f"Executing all queries in {args.query_path} ...")
         query_list = [
-            os.path.join(args.query_folder, f)
-            for f in os.listdir(args.query_folder)
-            if os.path.isfile(os.path.join(args.query_folder, f)) and f.endswith(".sql")
+            os.path.join(args.query_path, f)
+            for f in os.listdir(args.query_path)
+            if os.path.isfile(os.path.join(args.query_path, f)) and f.endswith(".sql")
         ]
         query_list.sort()
         logger.info(f"Found {len(query_list)} queries.")
@@ -410,7 +453,7 @@ if __name__ == "__main__":
                 query = Query2.parse_query(f.read())
                 df = Q2Executor.execute_query(query)
                 logger.info(f"Query: {get_keyword_text(query.main_query)}")
-                logger.info(f"Result df:\n{df.to_markdown()}")
+                logger.info(f"Result df:\n{get_output_df_text(df.to_markdown())}")
     elif (
         args.query_path is not None and os.path.isfile(args.query_path)
     ) or args.query is not None:
@@ -420,6 +463,7 @@ if __name__ == "__main__":
         else:
             query = Query2.parse_query(args.query)
         df = Q2Executor.execute_query(query)
-        logger.info(f"Result df:\n{df.to_markdown()}")
+        logger.info(f"Query: {get_keyword_text(query.main_query)}")
+        logger.info(f"Result df:\n{get_output_df_text(df.to_markdown())}")
     else:
-        raise ValueError("Either query_path or query must be provided.")
+        parser.print_help()

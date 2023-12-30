@@ -1,8 +1,36 @@
 from abc import ABC, abstractmethod
+from typing import Any, Callable
 
 import numpy as np
 
 from nsyn.util.base_model import BaseModel
+from nsyn.util.logger import get_logger
+
+logger = get_logger(name="nsyn.sampler")
+
+LARGE_DATA_TRUNCATION_THRESHOLD = 200_000
+
+
+# add a decorator to truncate large data output
+def truncate_large_output(func: Callable) -> Callable[..., np.ndarray]:
+    def wrapper(*args: Any, **kwargs: Any) -> np.ndarray:
+        output = func(*args, **kwargs)
+        if (
+            isinstance(output, np.ndarray)
+            and output.size > LARGE_DATA_TRUNCATION_THRESHOLD
+        ):
+            logger.warning(
+                f"Output of {func.__name__} is too large {output.size}. Truncating to {LARGE_DATA_TRUNCATION_THRESHOLD}"
+            )
+            # randomly sample LARGE_DATA_TRUNCATION_THRESHOLD elements from the output
+            output = output[
+                np.random.choice(
+                    output.shape[0], LARGE_DATA_TRUNCATION_THRESHOLD, replace=False
+                )
+            ]
+        return output
+
+    return wrapper
 
 
 class AbstractSampler(ABC):
@@ -68,6 +96,7 @@ class AuxiliarySampler(AbstractSampler, BaseModel):
 
     generation_strategy: str = "CircularShift"
 
+    @truncate_large_output
     def sample(self, data: np.ndarray) -> np.ndarray:
         """
         Samples data based on the specified generation strategy.
@@ -82,7 +111,7 @@ class AuxiliarySampler(AbstractSampler, BaseModel):
             NotImplementedError: If the generation strategy is not implemented.
         """
         if self.generation_strategy == "CircularShift":
-            return self._circ_shift(input_data=data)
+            return self._drop_all_zero_rows(self._circ_shift(input_data=data))
         else:
             raise NotImplementedError(
                 "Generation strategy {} is not implemented.".format(
@@ -124,3 +153,15 @@ class AuxiliarySampler(AbstractSampler, BaseModel):
             transformed_data[i * n : (i + 1) * n] = sorted_data == shifted_data
 
         return transformed_data
+
+    def _drop_all_zero_rows(self, data: np.ndarray) -> np.ndarray:
+        """
+        Drops all rows that are all zeros from the data.
+
+        Args:
+            data (np.ndarray): The input data array to be transformed.
+
+        Returns:
+            np.ndarray: The transformed data array after dropping all zero rows.
+        """
+        return data[~np.all(data == 0, axis=1)]

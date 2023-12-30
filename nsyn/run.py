@@ -7,7 +7,7 @@ import pandas as pd
 from nsyn.app.error_detector import ErrorDetector
 from nsyn.dataset.loader import load_data_by_name, load_ml_data_by_name
 from nsyn.dsl.prog import DSLProg
-from nsyn.learner import PC
+from nsyn.learner import GES, PC, BaseLearner
 from nsyn.sampler import AuxiliarySampler
 from nsyn.search import Search
 from nsyn.util.logger import get_logger
@@ -18,13 +18,24 @@ logger = get_logger(name="nsyn.run")
 def run_search(
     data_name_or_df: str | pd.DataFrame,
     output_file: str,
+    learner_name: str = "auto",
 ) -> None:
     if isinstance(data_name_or_df, pd.DataFrame):
         data = data_name_or_df
     else:
         data = cast(pd.DataFrame, load_ml_data_by_name(data_name_or_df, "train"))
     sampler = AuxiliarySampler()
-    learner = PC()
+    learner: BaseLearner
+
+    if learner_name == "auto":
+        learner = GES()
+
+    if learner_name == "pc":
+        learner = PC()
+    elif learner_name == "ges":
+        learner = GES()
+    else:
+        raise ValueError(f"Unknown learner name {learner_name}")
     search = Search.create(
         learning_algorithm=learner,
         sampling_algorithm=sampler,
@@ -82,6 +93,14 @@ if __name__ == "__main__":
         choices=["s", "e"],
         help="The mode to run the program in (s for search, e for error detection)",
     )
+    parser.add_argument(
+        "--learner",
+        "-l",
+        type=str,
+        choices=["pc", "ges", "auto"],
+        default="auto",
+        help="The learning algorithm to use for program synthesis",
+    )
     args = parser.parse_args()
     if args.mode == "e":
         if args.program is None:
@@ -96,4 +115,5 @@ if __name__ == "__main__":
         run_search(
             data_name_or_df=args.data,
             output_file=args.output,
+            learner_name=args.learner,
         )

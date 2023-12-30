@@ -9,7 +9,7 @@ import networkx as nx
 from nsyn.util.base_model import BaseModel
 from nsyn.util.errors import UndirectedEdgeException
 from nsyn.util.logger import get_logger
-from nsyn.util.mec import MEC, CyclicGraphException
+from nsyn.util.mec import MEC
 
 logger = get_logger(name="nsyn.util.dag")
 
@@ -129,10 +129,13 @@ class DAG(BaseModel):
                 if not cls.is_acyclic(graph=graph):
                     # If the graph becomes cyclic, revert the change and raise an exception
                     graph.remove_edge(u, v)
-                    graph.add_edge(v, u, directed=False)
-                    raise CyclicGraphException(
-                        "Orienting the edge ({}, {}) creates a cycle.".format(u, v)
+                    logger.error(
+                        f"Orienting the edge ({u}, {v}) creates a cycle. Reverting the change. Ignoring the edge."
                     )
+                    # graph.add_edge(v, u, directed=False)
+                    # raise CyclicGraphException(
+                    #     "Orienting the edge ({}, {}) creates a cycle.".format(u, v)
+                    # )
 
         if any(not d["directed"] for u, v, d in graph.edges(data=True)):
             raise UndirectedEdgeException("Not all edges are directed.")

@@ -17,6 +17,7 @@ def main(
     label_column: str,
     feature_columns: Optional[List[str]],
     disable_synthesizer: bool,
+    use_balanced_acc_metric: bool,
 ) -> None:
     """
     The method to train a model for a given dataset.
@@ -45,10 +46,17 @@ def main(
     logger.info(f"Saving model to {model_folder}...")
 
     logger.info("Training model...")
-    predictor = TabularPredictor(
-        label=label_column,
-        path=model_folder,
-    ).fit(train_dataset, presets="optimize_for_deployment")
+    if use_balanced_acc_metric:
+        logger.info("Using balanced accuracy metric...")
+        predictor = TabularPredictor(
+            label=label_column, path=model_folder, sample_weight="auto_weight"
+        ).fit(train_dataset, presets="optimize_for_deployment")
+    else:
+        logger.info("Using standard accuracy metric...")
+        predictor = TabularPredictor(
+            label=label_column,
+            path=model_folder,
+        ).fit(train_dataset, presets="optimize_for_deployment")
     logger.info("Training done.")
 
     logger.info("Evaluating model...")
@@ -100,6 +108,14 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to run the synthesizer after training.",
     )
+    parser.add_argument(
+        "--use_balanced_acc_metric",
+        "-b",
+        action="store_true",
+        default=False,
+        help="Whether to use balanced accuracy metric (default: standard accuracy metric).",
+    )
+
     args = parser.parse_args()
 
     if args.json_path is not None:
@@ -121,6 +137,7 @@ if __name__ == "__main__":
             label_column=label_column,
             feature_columns=feature_columns,
             disable_synthesizer=disable_synthesizer,
+            use_balanced_acc_metric=args.use_balanced_acc_metric,
         )
     else:
         # print help message

@@ -5,7 +5,9 @@ from typing import List, Set, Tuple, cast
 import networkx as nx
 
 from nsyn.util.base_model import BaseModel
-from nsyn.util.errors import CyclicGraphException
+from nsyn.util.logger import get_logger
+
+logger = get_logger(name="nsyn.util.mec")
 
 
 class MEC(BaseModel):
@@ -47,7 +49,10 @@ class MEC(BaseModel):
             self.graph.remove_edge(u, v)
             if not directed:
                 self.graph.remove_edge(v, u)
-            raise CyclicGraphException("Adding the edge creates a cycle in the graph.")
+            logger.error(
+                f"Adding the edge ({u}, {v}) creates a cycle in the graph. Ignoring the edge."
+            )
+            # raise CyclicGraphException("Adding the edge creates a cycle in the graph.")
 
     def is_acyclic(self) -> bool:
         """

@@ -7,22 +7,24 @@ import pandas as pd
 from nsyn.app.q2_util.q2_grammar import _T_MODEL, Query2
 from nsyn.util.base_model import BaseModel
 from nsyn.util.flags import (
+    ERROR_HANDLING_FLAG,
+    SAN_ANALYSIS_OUTPUT_JSONL_PATH,
+    SAN_COMPARATIVE_ANALYSIS_FLAG,
     SAN_RELEVANCE_ANALYSIS_FLAG,
-    SAN_RELEVANCE_ANALYSIS_JSONL_PATH,
 )
 from nsyn.util.logger import get_logger
 
 logger = get_logger(name="nsyn.app.ml_backend.relevance_analysis")
 
 
-class RelevanceAnalysisContext(BaseModel):
+class AnalysisContext(BaseModel):
     query: str
     model: _T_MODEL
     dataset: str
     call_index: int = 0
 
     @classmethod
-    def create_contexts(cls, query: Query2) -> Dict[str, RelevanceAnalysisContext]:
+    def create_contexts(cls, query: Query2) -> Dict[str, AnalysisContext]:
         """
         The method to create relevance analysis contexts for a query.
 
@@ -38,7 +40,7 @@ class RelevanceAnalysisContext(BaseModel):
             if query.dataset_version is None
             else f"{query.dataset_name}.{query.dataset_version}"
         )
-        contexts: Dict[str, RelevanceAnalysisContext] = {}
+        contexts: Dict[str, AnalysisContext] = {}
 
         if query.projection_model is not None:
             contexts[query.projection_model[0]] = cls(
@@ -71,10 +73,23 @@ class RelevanceAnalysisDumpEntry(BaseModel):
     noise_injected_num: int
     detected_noise_num: int
     noise_induced_error_num: int
+    total_input_num: int
     corr_prediction_error_sanitizer_alert: float
     corr_prediction_error_noise_injection: float
     corr_sanitizer_alert_noise_injection: float
-    ctx: Optional[RelevanceAnalysisContext]
+    ctx: Optional[AnalysisContext]
+
+
+class ComparativeAnalysisDumpEntry(BaseModel):
+    original_prediction_error_num: int
+    rectified_prediction_error_num: int
+
+    noise_injected_num: int
+    rectified_noise_injected_num: int
+
+    total_input_num: int = 0
+
+    ctx: Optional[AnalysisContext]
 
 
 def relevance_analysis(
@@ -82,9 +97,15 @@ def relevance_analysis(
     pred: pd.Series,
     sanitizer_alert: pd.Series,
     label_column: str,
-    ra_ctx: Optional[RelevanceAnalysisContext] = None,
+    ctx: Optional[AnalysisContext] = None,
 ) -> None:
     if not SAN_RELEVANCE_ANALYSIS_FLAG:
+        return
+
+    if ERROR_HANDLING_FLAG == "rectify":
+        logger.info(
+            "No relevance analysis performed because error handling flag is rectify."
+        )
         return
 
     if label_column not in df.columns:
@@ -138,6 +159,7 @@ def relevance_analysis(
         noise_injected_num=noise_injected.sum(),
         detected_noise_num=detected_noise.sum(),
         noise_induced_error_num=noise_induced_error_num,
+        total_input_num=len(df),
         corr_prediction_error_sanitizer_alert=cast(
             float, relevance_df.corr().loc["prediction_error", "sanitizer_alert"]
         ),
@@ -147,11 +169,52 @@ def relevance_analysis(
         corr_sanitizer_alert_noise_injection=cast(
             float, relevance_df.corr().loc["sanitizer_alert", "noise_injection"]
         ),
+        ctx=ctx,
+    )
+
+    # append the row to the JSONL file
+    with open(SAN_ANALYSIS_OUTPUT_JSONL_PATH, "a") as f:
+        f.write(dump_item.model_dump_json() + "\n")
+
+    if ctx is not None:
+        ctx.call_index += 1
+
+
+def comparative_analysis(
+    df: pd.DataFrame,
+    rectified_noise_injected_num: int,
+    pred: pd.Series,
+    original_pred: pd.Series,
+    label_column: str,
+    ra_ctx: Optional[AnalysisContext] = None,
+) -> None:
+    if not SAN_COMPARATIVE_ANALYSIS_FLAG:
+        raise RuntimeError(
+            "Should not reach here if SAN_COMPARATIVE_ANALYSIS_FLAG is False."
+        )
+    if ERROR_HANDLING_FLAG != "rectify":
+        raise RuntimeError(
+            "Should not reach here if ERROR_HANDLING_FLAG is not rectify."
+        )
+
+    original_prediction_error_num = (original_pred != df[label_column]).sum()
+    rectified_prediction_error_num = (pred != df[label_column]).sum()
+
+    noise_injected = df["_nsyn_noisy_injected"]
+    original_noise_injected_num = noise_injected.sum()
+    total_input_num = len(df)
+
+    dump_item = ComparativeAnalysisDumpEntry(
+        original_prediction_error_num=original_prediction_error_num,
+        rectified_prediction_error_num=rectified_prediction_error_num,
+        noise_injected_num=original_noise_injected_num,
+        rectified_noise_injected_num=rectified_noise_injected_num,
+        total_input_num=total_input_num,
         ctx=ra_ctx,
     )
 
     # append the row to the JSONL file
-    with open(SAN_RELEVANCE_ANALYSIS_JSONL_PATH, "a") as f:
+    with open(SAN_ANALYSIS_OUTPUT_JSONL_PATH, "a") as f:
         f.write(dump_item.model_dump_json() + "\n")
 
     if ra_ctx is not None:

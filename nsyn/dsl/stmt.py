@@ -9,6 +9,9 @@ from nsyn.dsl.branch import DSLBranch
 from nsyn.dsl.condition import DSLCondition
 from nsyn.util.base_model import BaseModel
 from nsyn.util.color import get_keyword_text
+from nsyn.util.logger import get_logger
+
+logger = get_logger(name="nsyn.dsl.stmt")
 
 # Predefine formatted strings for keywords
 GIVEN_str = get_keyword_text("GIVEN")
@@ -115,6 +118,11 @@ class DSLStmt(BaseModel):
             ]
         )
         counts = sub_df[self.dependent].value_counts().to_dict()
+        if len(counts) == 0:
+            logger.warning(
+                f"Empty counts for key {key} with {len(sub_df)} rows of data"
+            )
+            return None
         most_common = max(counts, key=counts.get)  # type: ignore
         max_count = counts[most_common]
         if 1 - epsilon < max_count / len(sub_df) and len(sub_df) > min_support:

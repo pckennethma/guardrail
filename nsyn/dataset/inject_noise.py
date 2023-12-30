@@ -60,7 +60,7 @@ def inject_noise(
     logger.info(f"Labeled test df shape: {test_df.shape}")
 
     label_column = model.inference_model_config.label_column
-
+    logger.info(f"Label column: {label_column}")
     correct_df = test_df[test_df[label_column] == model.predict(test_df)]
     logger.info(f"Correctly predicted df shape: {correct_df.shape}")
 
@@ -70,7 +70,9 @@ def inject_noise(
         assert isinstance(nsyn_prog, DSLProg)
     logger.info(f"Loaded nsyn program from {nsyn_prog_path}")
 
-    target_columns = [stmt.dependent for stmt in nsyn_prog.stmts]
+    target_columns = [
+        stmt.dependent for stmt in nsyn_prog.stmts if stmt.dependent != label_column
+    ]
     logger.info(f"Target columns: {target_columns}")
 
     correct_df["_nsyn_noisy_injected"] = False
@@ -92,6 +94,11 @@ def inject_noise(
                 possible_values, weights=weights, k=num_values_to_replace
             )
             correct_df.loc[subsampled_indices, column] = random_values
+        elif correct_df[column].dtype == bool:
+            # Flip the values of a random subset of rows for boolean columns
+            correct_df.loc[subsampled_indices, column] = ~correct_df.loc[
+                subsampled_indices, column
+            ]
         else:
             # Directly assign NaN to a random subset of rows for numeric columns
             correct_df.loc[subsampled_indices, column] = np.nan

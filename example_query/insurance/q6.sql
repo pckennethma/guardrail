@@ -1,0 +1,2 @@
+SELECT avg(CASE WHEN M1 == 'TenThou' THEN 1 ELSE 0 END) FROM insurance.noisy WHERE insurance.Airbag == 'True' GROUP BY insurance.Age
+M1: insurance-d453800d-79b0-4e98-9bf3-e3d82930b500, autogluon # M1 is a classification model to predict `PropCost` as 'Thousand', 'HundredThou', 'TenThou', 'Million'.

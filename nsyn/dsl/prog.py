@@ -103,6 +103,34 @@ class DSLProg(BaseModel):
         assert isinstance(res, pd.Series)
         return res
 
+    def get_expected_df(
+        self,
+        df: pd.DataFrame,
+        worker_num: int = 4,
+    ) -> pd.DataFrame:
+        """
+        Computes the expected DataFrame from the given DataFrame.
+
+        Args:
+            df (pd.DataFrame): A DataFrame to compute the expected DataFrame from.
+            worker_num (int, optional): The number of workers to use. Defaults to 4.
+
+        Returns:
+            pd.DataFrame: The expected DataFrame.
+        """
+
+        ddf = dd.from_pandas(df, npartitions=worker_num)
+
+        def apply_row(row: pd.Series) -> pd.Series:
+            return pd.Series(self.evaluate(row.to_dict())[0])
+
+        def apply_df(df: pd.DataFrame) -> pd.DataFrame:
+            return df.apply(apply_row, axis=1)
+
+        res = ddf.map_partitions(apply_df).compute(schedule="processes")
+        assert isinstance(res, pd.DataFrame)
+        return res
+
     def __str__(self) -> str:
         """
         Provides a string representation of the DSL program.
