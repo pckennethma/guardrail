@@ -21,6 +21,7 @@ if __name__ == "__main__":
         "--prog_file",
         "-p",
         type=str,
+        required=True,
         help="The path to the program file.",
     )
     args = parser.parse_args()
