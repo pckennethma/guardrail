@@ -86,11 +86,14 @@ class DSLStmt(BaseModel):
             branch
             for key, sub_df in grouped
             if (
-                branch := self._make_branch(
-                    cast(tuple[str, ...], key), sub_df, epsilon, min_support
+                (len(sub_df) >= min_support)
+                and (
+                    branch := self._make_branch(
+                        cast(tuple[str, ...], key), sub_df, epsilon, min_support
+                    )
                 )
+                is not None
             )
-            is not None
         ]
 
     def _make_branch(

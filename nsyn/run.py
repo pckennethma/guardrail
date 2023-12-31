@@ -7,7 +7,7 @@ import pandas as pd
 from nsyn.app.error_detector import ErrorDetector
 from nsyn.dataset.loader import load_data_by_name, load_ml_data_by_name
 from nsyn.dsl.prog import DSLProg
-from nsyn.learner import GES, PC, BaseLearner
+from nsyn.learner import BLIP, GES, PC, BaseLearner
 from nsyn.sampler import AuxiliarySampler
 from nsyn.search import Search
 from nsyn.util.logger import get_logger
@@ -28,12 +28,13 @@ def run_search(
     learner: BaseLearner
 
     if learner_name == "auto":
-        learner = GES()
-
-    if learner_name == "pc":
+        learner = BLIP()
+    elif learner_name == "pc":
         learner = PC()
     elif learner_name == "ges":
         learner = GES()
+    elif learner_name == "blip":
+        learner = BLIP()
     else:
         raise ValueError(f"Unknown learner name {learner_name}")
     search = Search.create(
@@ -97,7 +98,7 @@ if __name__ == "__main__":
         "--learner",
         "-l",
         type=str,
-        choices=["pc", "ges", "auto"],
+        choices=["pc", "ges", "auto", "blip"],
         default="auto",
         help="The learning algorithm to use for program synthesis",
     )

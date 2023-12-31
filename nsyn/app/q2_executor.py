@@ -63,6 +63,7 @@ class Q2Executor:
             if (
                 query.legacy_projection_column is not None
                 and query.legacy_projection_agg_func is not None
+                and query.legacy_projection_with_case_when is None
             ):
                 logger.info(
                     f"debug Applying legacy projection column {query.legacy_projection_column} with agg func {query.legacy_projection_agg_func}"
@@ -77,6 +78,57 @@ class Q2Executor:
                             name=f"{query.legacy_projection_agg_func}({query.legacy_projection_column})"
                         )
                     )
+            elif (
+                query.legacy_projection_with_case_when is not None
+                and query.legacy_projection_agg_func is not None
+                and query.legacy_projection_column is None
+            ):
+                logger.info(
+                    f"Applying legacy projection with case when clause {query.legacy_projection_with_case_when} with agg func {query.legacy_projection_agg_func}"
+                )
+                projection_with_case_when = query.legacy_projection_with_case_when
+                for group_name, group_df in df_grouped:
+                    group_names.append(group_name)
+                    aggregated_values.append(
+                        group_df[projection_with_case_when.column]
+                        .apply(
+                            Q2Executor._get_safe_eval(
+                                projection_with_case_when.condition,
+                                group_df[projection_with_case_when.column].dtype
+                                == bool,
+                            )
+                        )
+                        .dropna()
+                        .agg(query.legacy_projection_agg_func)
+                    )
+                new_column_name = f"{query.legacy_projection_agg_func}({projection_with_case_when.get_name()})"
+                df = pd.DataFrame(
+                    {
+                        query.legacy_group_by_column: group_names,
+                        new_column_name: aggregated_values,
+                    }
+                )
+            elif (
+                query.legacy_projection_with_case_when is not None
+                and query.legacy_projection_agg_func is None
+                and query.legacy_projection_column is None
+            ):
+                logger.info(
+                    f"Applying legacy projection with case when clause {query.legacy_projection_with_case_when} without agg func."
+                )
+                projection_with_case_when = query.legacy_projection_with_case_when
+                df = (
+                    df_grouped[projection_with_case_when.column]
+                    .apply(
+                        Q2Executor._get_safe_eval(
+                            projection_with_case_when.condition,
+                            df[projection_with_case_when.column].dtype == bool,
+                        )
+                    )
+                    .reset_index(
+                        name=projection_with_case_when.get_name(),
+                    )
+                )
             elif (
                 query.projection_model is not None
                 and query.projection_model_agg_func is not None
@@ -121,32 +173,41 @@ class Q2Executor:
 
                 for group_name, group_df in df_grouped:
                     group_names.append(group_name)
+                    pred = inference_engine.predict(
+                        group_df, ra_ctxs[projection_model_with_case_when.model[0]]
+                    )
                     aggregated_values.append(
-                        inference_engine.predict(
-                            group_df, ra_ctxs[projection_model_with_case_when.model[0]]
+                        pred.apply(
+                            Q2Executor._get_safe_eval(
+                                projection_model_with_case_when.condition,
+                                pred.dtype == bool,
+                            )
                         )
-                        .apply(projection_model_with_case_when.get_lambda())
                         .dropna()
                         .agg(query.projection_model_agg_func)
                     )
+                new_column_name = projection_model_with_case_when.get_name(model_label)
                 df = pd.DataFrame(
                     {
                         query.legacy_group_by_column: group_names,
-                        f"{query.projection_model_agg_func}({model_label} [predicted] {projection_model_with_case_when.condition})": aggregated_values,
+                        new_column_name: aggregated_values,
                     }
                 )
             else:
                 raise ValueError("Invalid query")
+        # no group by
         else:
             if (
                 query.legacy_projection_column == "*"
                 and query.legacy_projection_agg_func is None
+                and query.legacy_projection_with_case_when is None
             ):
                 logger.info("Applying legacy projection column *")
                 df = df
             elif (
                 query.legacy_projection_column is not None
                 and query.legacy_projection_agg_func is not None
+                and query.legacy_projection_with_case_when is None
             ):
                 logger.info(
                     f"Applying legacy projection column {query.legacy_projection_column} with agg func {query.legacy_projection_agg_func}"
@@ -167,11 +228,57 @@ class Q2Executor:
             elif (
                 query.legacy_projection_column is not None
                 and query.legacy_projection_agg_func is None
+                and query.legacy_projection_with_case_when is None
             ):
                 logger.info(
                     f"Applying legacy projection column {query.legacy_projection_column}"
                 )
                 df = df[[query.legacy_projection_column]]
+            elif (
+                query.legacy_projection_with_case_when is not None
+                and query.legacy_projection_agg_func is not None
+                and query.legacy_projection_column is None
+            ):
+                logger.info(
+                    f"Applying legacy projection with case when clause {query.legacy_projection_with_case_when} with agg func {query.legacy_projection_agg_func}"
+                )
+                projection_with_case_when = query.legacy_projection_with_case_when
+                agg_val = (
+                    df[projection_with_case_when.column]
+                    .apply(
+                        Q2Executor._get_safe_eval(
+                            projection_with_case_when.condition,
+                            df[projection_with_case_when.column].dtype == bool,
+                        )
+                    )
+                    .agg(query.legacy_projection_agg_func)
+                )
+                new_column_name = f"{query.legacy_projection_agg_func}({projection_with_case_when.get_name()})"
+                df = pd.DataFrame({new_column_name: [agg_val]})
+            elif (
+                query.legacy_projection_with_case_when is not None
+                and query.legacy_projection_agg_func is None
+                and query.legacy_projection_column is None
+            ):
+                logger.info(
+                    f"Applying legacy projection with case when clause {query.legacy_projection_with_case_when} without agg func."
+                )
+                projection_with_case_when = query.legacy_projection_with_case_when
+                new_column_name = projection_with_case_when.get_name()
+                df[new_column_name] = df[projection_with_case_when.column].apply(
+                    Q2Executor._get_safe_eval(
+                        projection_with_case_when.condition,
+                        df[projection_with_case_when.column].dtype == bool,
+                    )
+                )
+                # move the case when column to the front
+                df = df[
+                    [
+                        new_column_name,
+                        *[c for c in df.columns if c != new_column_name],
+                    ]
+                ]
+
             elif (
                 query.projection_model is not None
                 and query.projection_model_agg_func is not None
@@ -229,21 +336,18 @@ class Q2Executor:
                     projection_model_with_case_when.model[0],
                     projection_model_with_case_when.model[1],
                 )
-                agg_val = (
-                    inference_engine.predict(
-                        df, ra_ctxs[projection_model_with_case_when.model[0]]
+                pred = inference_engine.predict(
+                    df, ra_ctxs[projection_model_with_case_when.model[0]]
+                )
+                agg_val = pred.apply(
+                    Q2Executor._get_safe_eval(
+                        projection_model_with_case_when.condition,
+                        pred.dtype == bool,
                     )
-                    .apply(projection_model_with_case_when.get_lambda())
-                    .agg(query.projection_model_agg_func)
-                )
+                ).agg(query.projection_model_agg_func)
                 model_label = inference_engine.inference_model_config.label_column
-                df = pd.DataFrame(
-                    {
-                        f"{query.projection_model_agg_func}({model_label} [predicted] {projection_model_with_case_when.condition})": [
-                            agg_val
-                        ]
-                    }
-                )
+                new_column_name = f"{query.projection_model_agg_func}({projection_model_with_case_when.get_name(model_label)})"
+                df = pd.DataFrame({new_column_name: [agg_val]})
             elif (
                 query.projection_model is None
                 and query.projection_model_agg_func is None
@@ -258,23 +362,21 @@ class Q2Executor:
                     projection_model_with_case_when.model[1],
                 )
                 model_label = inference_engine.inference_model_config.label_column
-                df[
-                    f"{model_label} [predicted] {projection_model_with_case_when.condition}"
-                ] = inference_engine.predict(
+                new_column_name = projection_model_with_case_when.get_name(model_label)
+                pred = inference_engine.predict(
                     df, ra_ctxs[projection_model_with_case_when.model[0]]
-                ).apply(
-                    projection_model_with_case_when.get_lambda()
+                )
+                df[new_column_name] = pred.apply(
+                    Q2Executor._get_safe_eval(
+                        projection_model_with_case_when.condition,
+                        pred.dtype == bool,
+                    )
                 )
                 # move the predicted column to the front
                 df = df[
                     [
-                        f"{model_label} [predicted] {projection_model_with_case_when.condition}",
-                        *[
-                            c
-                            for c in df.columns
-                            if c
-                            != f"{model_label} [predicted] {projection_model_with_case_when.condition}"
-                        ],
+                        new_column_name,
+                        *[c for c in df.columns if c != new_column_name],
                     ]
                 ]
             else:
@@ -398,6 +500,9 @@ class Q2Executor:
         else:
             boolean_flag = False
         boolean_true_val2 = bool(true_val2)
+        logger.info(
+            f"Creating safe eval function for condition {condition} with op {op}, true_val2 {true_val2}, boolean_flag {boolean_flag}, boolean_true_val2 {boolean_true_val2}"
+        )
         if op == "==" and boolean_flag:
             return lambda val: val == boolean_true_val2
         elif op == "!=" and boolean_flag:

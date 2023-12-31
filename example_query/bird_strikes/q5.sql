@@ -1,0 +1,2 @@
+SELECT avg(CASE WHEN M1 == 'N' THEN 1 ELSE 0 END) FROM bird_strikes.noisy GROUP BY bird_strikes.PHASE_OF_FLIGHT
+M1: bird_strikes-b52d7039-2da2-4e1c-a502-fc079bf64fe4, autogluon # M1 is a classification model to predict `DAMAGE`.

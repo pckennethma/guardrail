@@ -1,3 +1,7 @@
 [submodule "lib/fastmecenumeration"]
 	path = lib/fastmecenumeration
 	url = https://github.com/pckennethma/fastmecenumeration.git
+
+[submodule "lib/blip"]
+	path = lib/blip
+	url = https://github.com/mauro-idsia/blip.git

@@ -38,6 +38,18 @@ def main(
     else:
         logger.info(f"Using all columns except {label_column} as features.")
 
+    if train_df[label_column].isnull().any():
+        logger.warning(
+            f"Train df has {train_df[label_column].isnull().sum()} missing values out of {train_df.shape[0]} rows in the label column. Dropping them..."
+        )
+        train_df = train_df.dropna(subset=[label_column])
+
+    if test_df[label_column].isnull().any():
+        logger.warning(
+            f"Test df has {test_df[label_column].isnull().sum()} missing values out of {test_df.shape[0]} rows in the label column. Dropping them..."
+        )
+        test_df = test_df.dropna(subset=[label_column])
+
     train_dataset = TabularDataset(train_df)
     test_dataset = TabularDataset(test_df)
 

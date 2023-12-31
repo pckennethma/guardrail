@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, cast
+from typing import Any, Dict, List, Literal, Optional, Tuple, cast
 
 from nsyn.util.base_model import BaseModel
-from nsyn.util.color import get_keyword_text
 from nsyn.util.logger import get_logger
 
 logger = get_logger(name="nsyn.app.q2_util.q2")
@@ -105,12 +104,54 @@ class CaseWhen(BaseModel):
             false_outcome=false_outcome,
         )
 
-    def get_lambda(self) -> Callable[[Any], int]:
-        return (
-            lambda x: self.true_outcome
-            if eval(f"{repr(x)} {self.condition}")
-            else self.false_outcome
+    # def __str__(self) -> str:
+    #     return f"CASE WHEN {self.model[0]} [predicted] {self.condition} THEN {self.true_outcome} ELSE {self.false_outcome} END"
+
+    def get_name(self, model_label: str) -> str:
+        return f"CASE WHEN {model_label} [predicted] {self.condition} THEN {self.true_outcome} ELSE {self.false_outcome} END"
+
+
+class LegacyCaseWhen(BaseModel):
+    column: str
+    condition: str
+
+    true_outcome: int = 1
+    false_outcome: int = 0
+
+    @classmethod
+    def create(
+        cls,
+        dataset_name: str,
+        raw_column_and_condition: str,
+        raw_true_outcome: str,
+        raw_false_outcome: str,
+    ) -> LegacyCaseWhen:
+        legacy_selection_filter_matches = cast(
+            List[List[str]],
+            re.findall(
+                rf"{dataset_name}\.(\w+)\s*(==|!=|>|<|>=|<=)\s*('[^']*'|\"[^\"]*\"|\d+)",
+                raw_column_and_condition,
+            ),
         )
+        assert (
+            len(legacy_selection_filter_matches) == 1
+        ), "Must have one condition in case when clause."
+        col, op, val = legacy_selection_filter_matches[0]
+
+        condition = f"{op} {val}"
+        true_outcome, false_outcome = int(raw_true_outcome), int(raw_false_outcome)
+        return cls(
+            column=col,
+            condition=condition,
+            true_outcome=true_outcome,
+            false_outcome=false_outcome,
+        )
+
+    # def __str__(self) -> str:
+    #     return f"CASE WHEN {self.column} {self.condition} THEN {self.true_outcome} ELSE {self.false_outcome} END"
+
+    def get_name(self) -> str:
+        return f"CASE WHEN {self.column} {self.condition} THEN {self.true_outcome} ELSE {self.false_outcome} END"
 
 
 class Query2(BaseModel):
@@ -161,6 +202,7 @@ class Query2(BaseModel):
 
     legacy_projection_column: Optional[str]
     legacy_projection_agg_func: Optional[_T_AGG_FUNC]
+    legacy_projection_with_case_when: Optional[LegacyCaseWhen]
     legacy_selection_filters: Optional[List[Tuple[str, Any]]]
     legacy_group_by_column: Optional[str]
 
@@ -193,6 +235,7 @@ class Query2(BaseModel):
         legacy_projection_agg_func: Optional[_T_AGG_FUNC] = None
         legacy_selection_filters: Optional[List[Tuple[str, Any]]] = None
         legacy_group_by_column: Optional[str] = None
+        legacy_projection_with_case_when: Optional[LegacyCaseWhen] = None
 
         # Extract and process model information
         query = query.strip()
@@ -204,7 +247,7 @@ class Query2(BaseModel):
             for model_num, model_path, model_type in model_matches
         }
 
-        logger.info(f"main query: {get_keyword_text(main_query)}")
+        logger.info(f"main query: {main_query}")
         logger.info(f"model info:\n{model_info}")
 
         clause_match = CLAUSE_MATCH_PATTERN.match(main_query)
@@ -274,24 +317,36 @@ class Query2(BaseModel):
         count_all_match = re.findall(r"count\(\*\)", select_clause)
 
         if agg_case_when_match or raw_case_when_match:
+            raw_agg_func: Optional[str] = None
             if agg_case_when_match:
                 raw_agg_func = agg_case_when_match[0][0]
-                raw_model_and_condition = agg_case_when_match[0][1]
+                raw_model_or_column_and_condition = agg_case_when_match[0][1]
                 raw_true_outcome = agg_case_when_match[0][2]
                 raw_false_outcome = agg_case_when_match[0][3]
-                projection_model_agg_func = _fix_agg_func(raw_agg_func)
             elif raw_case_when_match:
-                raw_model_and_condition = raw_case_when_match[0][0]
+                raw_model_or_column_and_condition = raw_case_when_match[0][0]
                 raw_true_outcome = raw_case_when_match[0][1]
                 raw_false_outcome = raw_case_when_match[0][2]
             else:
                 raise ValueError("Should not reach here.")
-            projection_model_with_case_when = CaseWhen.create(
-                raw_model_and_condition=raw_model_and_condition,
-                raw_true_outcome=raw_true_outcome,
-                raw_false_outcome=raw_false_outcome,
-                model_info=model_info,
-            )
+            if dataset_name in raw_model_or_column_and_condition:
+                legacy_projection_with_case_when = LegacyCaseWhen.create(
+                    dataset_name=dataset_name,
+                    raw_column_and_condition=raw_model_or_column_and_condition,
+                    raw_true_outcome=raw_true_outcome,
+                    raw_false_outcome=raw_false_outcome,
+                )
+                if raw_agg_func:
+                    legacy_projection_agg_func = _fix_agg_func(raw_agg_func)
+            else:
+                projection_model_with_case_when = CaseWhen.create(
+                    raw_model_and_condition=raw_model_or_column_and_condition,
+                    raw_true_outcome=raw_true_outcome,
+                    raw_false_outcome=raw_false_outcome,
+                    model_info=model_info,
+                )
+                if raw_agg_func:
+                    projection_model_agg_func = _fix_agg_func(raw_agg_func)
         elif agg_proj_model_match or raw_proj_model_match:
             assert not (
                 agg_proj_model_match and raw_proj_model_match
@@ -413,6 +468,7 @@ class Query2(BaseModel):
             legacy_projection_agg_func=legacy_projection_agg_func,
             legacy_selection_filters=legacy_selection_filters,
             legacy_group_by_column=legacy_group_by_column,
+            legacy_projection_with_case_when=legacy_projection_with_case_when,
             main_query=main_query,
             raw_model_info=raw_model_info,
         )

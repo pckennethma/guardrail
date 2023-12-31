@@ -51,3 +51,17 @@ SAN_ANALYSIS_OUTPUT_JSONL_PATH = os.getenv(
 # - coerce: set the value to NaN and continue the execution
 # - rectify: rectify the data errors and continue the execution
 ERROR_HANDLING_FLAG = os.getenv("NSYN_Q2_ERROR_HANDLING", "ignore").lower()
+
+# This flag `BLIP_JAR_PATH` is used to specify the path of the BLIP jar file.
+# If the flag is not specified, the default path will be used.
+BLIP_JAR_PATH = os.getenv("NSYN_BLIP_JAR_PATH", "lib/blip/blip.jar")
+
+# This flag `BLIP_JAVA_XMX` is used to specify the maximum memory allocation
+# pool for the BLIP jar file. If the flag is not specified, the default value
+# will be used.
+BLIP_JAVA_XMX = os.getenv("NSYN_JAVA_XMX", "16g")
+
+# This flag `BLIP_MACHINE_CORES` is used to specify the number of cores to use
+# for the BLIP jar file. If the flag is not specified, the default value will
+# be used.
+BLIP_MACHINE_CORES = os.getenv("NSYN_BLIP_MACHINE_CORES", "4")

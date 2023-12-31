@@ -11,6 +11,7 @@ from causallearn.utils.cit import chisq
 
 from nsyn.sampler import AbstractSampler
 from nsyn.util.base_model import BaseModel
+from nsyn.util.blip_util import run_blip
 from nsyn.util.convert import ggraph2mec
 from nsyn.util.logger import get_logger
 from nsyn.util.mec import MEC
@@ -118,12 +119,12 @@ class PC(BaseLearner, BaseModel):
 
 class GES(BaseLearner, BaseModel):
     """
-    A subclass of BaseLearner implementing the PC algorithm for learning a MEC.
+    A subclass of BaseLearner implementing the GES algorithm for learning a MEC.
 
     The GES (Greedy Equivalence Search) algorithm is a score-based method for learning causal structures from data. This class implements the GES algorithm in the context of the NSYN framework.
 
     Methods:
-        learn: Implements the PC algorithm to learn and return a MEC from the given data and sampling protocol.
+        learn: Implements the GES algorithm to learn and return a MEC from the given data and sampling protocol.
     """
 
     @learner_timer
@@ -131,19 +132,53 @@ class GES(BaseLearner, BaseModel):
         self, data: np.ndarray | pd.DataFrame, sampling_protocol: AbstractSampler
     ) -> MEC:
         """
-        Implements the PC algorithm to learn a Markov Equivalence Class from the data.
+        Implements the GES algorithm to learn a Markov Equivalence Class from the data.
 
         Args:
             data (np.ndarray | pd.DataFrame): The input data, either as a numpy array or a pandas DataFrame.
             sampling_protocol (AbstractSampler): The sampling protocol to use on the data.
 
         Returns:
-            MEC: A Markov Equivalence Class derived from the data using the PC algorithm.
+            MEC: A Markov Equivalence Class derived from the data using the GES algorithm.
         """
         if isinstance(data, pd.DataFrame):
             data = self.pd_to_np(data)
         transformed_data = sampling_protocol.sample(data)
         logger.info(f"GES: transformed_data.shape = {transformed_data.shape}")
         cg = ges(transformed_data, score_func="local_score_BDeu", maxP=3)["G"]
+        assert isinstance(cg, GeneralGraph), f"cg is not a GeneralGraph: {type(cg)}"
+        return ggraph2mec(cg)
+
+
+class BLIP(BaseLearner, BaseModel):
+    """
+    A subclass of BaseLearner implementing the BLIP algorithm for learning a MEC.
+
+    The GES (Greedy Equivalence Search) algorithm is a score-based method for learning causal structures from data. This class implements the GES algorithm in the context of the NSYN framework.
+
+    Methods:
+        learn: Implements the BLIP algorithm to learn and return a MEC from the given data and sampling protocol.
+    """
+
+    @learner_timer
+    def learn(
+        self, data: np.ndarray | pd.DataFrame, sampling_protocol: AbstractSampler
+    ) -> MEC:
+        """
+        Implements the BLIP algorithm to learn a Markov Equivalence Class from the data.
+
+        Args:
+            data (np.ndarray | pd.DataFrame): The input data, either as a numpy array or a pandas DataFrame.
+            sampling_protocol (AbstractSampler): The sampling protocol to use on the data.
+
+        Returns:
+            MEC: A Markov Equivalence Class derived from the data using the BLIP algorithm.
+        """
+
+        if isinstance(data, pd.DataFrame):
+            data = self.pd_to_np(data)
+        transformed_data = sampling_protocol.sample(data)
+        logger.info(f"BLIP: transformed_data.shape = {transformed_data.shape}")
+        cg = run_blip(transformed_data)
         assert isinstance(cg, GeneralGraph), f"cg is not a GeneralGraph: {type(cg)}"
         return ggraph2mec(cg)
