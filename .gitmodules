@@ -5,3 +5,7 @@
 [submodule "lib/blip"]
 	path = lib/blip
 	url = https://github.com/mauro-idsia/blip.git
+
+[submodule "lib/fdx"]
+	path = lib/fdx
+	url = https://github.com/sis-ethz/Profiler-Public.git

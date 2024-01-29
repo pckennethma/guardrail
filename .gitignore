@@ -166,3 +166,4 @@ models/
 
 ra-*.jsonl
 lib/blip/
+FDs_by_col.txt
