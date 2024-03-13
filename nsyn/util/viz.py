@@ -1,22 +1,24 @@
+import pickle
 from typing import Optional
-import pandas as pd
+
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap, ListedColormap
 import numpy as np
+import palettable
 import pandas as pd
 import seaborn as sns
-import palettable
-import pickle
+from matplotlib.colors import ListedColormap
+
 from nsyn.dataset.loader import load_data_by_name_and_vers
 from nsyn.dsl.prog import DSLProg
 from nsyn.util.logger import get_logger
 
 logger = get_logger(name="nsyn.util.viz")
 
-plt.rcParams['pdf.fonttype'] = 42
+plt.rcParams["pdf.fonttype"] = 42
+
 
 def plot_dsl_program(
-    prog: DSLProg, 
+    prog: DSLProg,
     dataset_name: str,
     dataset_version: str,
     output_file: Optional[str],
@@ -31,15 +33,19 @@ def plot_dsl_program(
     for stmt in prog.stmts:
         for parent in stmt.determinants:
             heatmap_value = max(0.001, stmt.compute_loss(df) / len(df) * 100)
-            heatmap[columns.index(parent), columns.index(stmt.dependent)] = heatmap_value
-            logger.info(f"Parent: {parent}, Child: {stmt.dependent}, Loss: {heatmap_value}")
+            heatmap[
+                columns.index(parent), columns.index(stmt.dependent)
+            ] = heatmap_value
+            logger.info(
+                f"Parent: {parent}, Child: {stmt.dependent}, Loss: {heatmap_value}"
+            )
 
     # Create a custom colormap with a transparent color for zero values
     orrd_colors = palettable.colorbrewer.sequential.OrRd_9.mpl_colors[1:]
     # create a colormap object from the list of colors
     cmap = ListedColormap(orrd_colors)
     # set the bad value color to transparent
-    cmap.set_bad('0',0)
+    cmap.set_bad("0", 0)
 
     # Replace 0 values with NaN for transparency
     heatmap[heatmap == 0] = np.nan
@@ -48,7 +54,7 @@ def plot_dsl_program(
     plt.figure()
     heatmap_df = pd.DataFrame(heatmap, columns=short_columns, index=short_columns)
     ax = sns.heatmap(
-        data=heatmap_df, 
+        data=heatmap_df,
         cmap=cmap,
         cbar=True,  # Enable color bar if needed
         square=True,
@@ -64,8 +70,10 @@ def plot_dsl_program(
     else:
         plt.show()
 
+
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--data",
@@ -95,7 +103,7 @@ if __name__ == "__main__":
         help="Path to the output file",
     )
     args = parser.parse_args()
-    
+
     with open(args.program, "rb") as f:
         prog = pickle.load(f)
         assert isinstance(prog, DSLProg)

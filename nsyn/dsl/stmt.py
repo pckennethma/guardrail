@@ -192,7 +192,7 @@ class DSLStmt(BaseModel):
 
             def _evaluate_conditions(row: pd.Series) -> int:
                 row_dict = row.to_dict()
-                
+
                 matched_branch: Optional[DSLBranch] = None
                 for branch in self.branches:
                     if branch.condition.evaluate(row_dict):
@@ -201,10 +201,14 @@ class DSLStmt(BaseModel):
                 if matched_branch is None:
                     return 0
                 else:
-                    if row[matched_branch.assign.variable] == matched_branch.assign.value:
+                    if (
+                        row[matched_branch.assign.variable]
+                        == matched_branch.assign.value
+                    ):
                         return 0
                     else:
                         return 1
+
             self.loss = input_data.apply(_evaluate_conditions, axis=1).sum()
         return self.loss
 
