@@ -14,7 +14,7 @@ from nsyn.util.flags import (
 )
 from nsyn.util.logger import get_logger
 
-logger = get_logger(name="nsyn.app.ml_backend.relevance_analysis")
+logger = get_logger(name="nsyn.app.ml_backend.analysis")
 
 
 class AnalysisContext(BaseModel):
@@ -67,20 +67,21 @@ class AnalysisContext(BaseModel):
         return contexts
 
 
-class RelevanceAnalysisDumpEntry(BaseModel):
-    prediction_error_num: int
-    detected_error_num: int
-    noise_injected_num: int
-    detected_noise_num: int
-    noise_induced_error_num: int
+class RelevanceAnalysisDumpItem(BaseModel):
+    total_pred_error_num: int
+    detected_pred_error_num: int
+    actual_data_error_num: int
+    detected_data_error_num: int
+    falsely_detected_data_error_num: int
+    data_error_caused_pred_error: int
     total_input_num: int
-    corr_prediction_error_sanitizer_alert: float
-    corr_prediction_error_noise_injection: float
-    corr_sanitizer_alert_noise_injection: float
+    corr_prediction_error_sanitizer_alert: Optional[float]
+    corr_prediction_error_noise_injection: Optional[float]
+    corr_sanitizer_alert_noise_injection: Optional[float]
     ctx: Optional[AnalysisContext]
 
 
-class ComparativeAnalysisDumpEntry(BaseModel):
+class ComparativeAnalysisDumpItem(BaseModel):
     original_prediction_error_num: int
     rectified_prediction_error_num: int
 
@@ -115,66 +116,86 @@ def relevance_analysis(
         return
 
     prediction_errors = pred != df[label_column]
-    prediction_error_num = prediction_errors.sum()
+    total_pred_error_num = prediction_errors.sum()
 
     logger.info(
-        f"Model mis-predicts {prediction_error_num} out of {len(df)} rows of data."
+        f"Model mis-predicts {total_pred_error_num} out of {len(df)} rows of data."
     )
 
     if "_nsyn_noisy_injected" not in df.columns:
-        noise_injected = pd.Series([False] * len(df))
+        error_injected = pd.Series([False] * len(df))
     else:
-        noise_injected = df["_nsyn_noisy_injected"]
-        logger.info(f"Found {noise_injected.sum()} rows of data with injected noise.")
-        detected_noise = sanitizer_alert & noise_injected
+        error_injected = df["_nsyn_noisy_injected"]
         logger.info(
-            f"Out of {noise_injected.sum()} rows of data with injected noise, {detected_noise.sum()} are detected by sanitizer."
+            f"Ground truth: {error_injected.sum()} rows of data with actual data errors."
         )
-        noise_induced_error = prediction_errors & noise_injected
-        noise_induced_error_num = noise_induced_error.sum()
+        error_detected = sanitizer_alert & error_injected
         logger.info(
-            f"Out of {prediction_error_num} prediction errors, {noise_induced_error_num} are induced by noise."
+            f"Out of {error_injected.sum()} rows of data with actual data errors, {error_detected.sum()} are detected by sanitizer."
         )
+        noise_induced_error = prediction_errors & error_injected
+        data_error_caused_pred_error = noise_induced_error.sum()
+        logger.info(
+            f"Out of {total_pred_error_num} prediction errors, {data_error_caused_pred_error} are induced by data errors."
+        )
+        falsely_detected_data_error_num = (sanitizer_alert & ~error_injected).sum()
 
     relevance_df = pd.DataFrame(
         {
             "prediction_error": prediction_errors,
             "sanitizer_alert": sanitizer_alert,
-            "noise_injection": noise_injected,
+            "noise_injection": error_injected,
         }
     )
 
-    detected_error_num = relevance_df[
+    detected_pred_error_num = relevance_df[
         (relevance_df["sanitizer_alert"] == True)  # noqa: E712
         & (relevance_df["prediction_error"] == True)  # noqa: E712
     ].shape[0]
 
-    logger.info(f"{detected_error_num} prediction errors are detected by sanitizer.")
+    logger.info(f"{detected_pred_error_num} prediction errors are detected by sanitizer.")
 
     logger.info(f"SANITIZER_RELEVANCE_ANALYSIS:\n{relevance_df.corr()}")
 
-    dump_item = RelevanceAnalysisDumpEntry(
-        prediction_error_num=prediction_error_num,
-        detected_error_num=detected_error_num,
-        noise_injected_num=noise_injected.sum(),
-        detected_noise_num=detected_noise.sum(),
-        noise_induced_error_num=noise_induced_error_num,
-        total_input_num=len(df),
-        corr_prediction_error_sanitizer_alert=cast(
-            float, relevance_df.corr().loc["prediction_error", "sanitizer_alert"]
-        ),
-        corr_prediction_error_noise_injection=cast(
-            float, relevance_df.corr().loc["prediction_error", "noise_injection"]
-        ),
-        corr_sanitizer_alert_noise_injection=cast(
-            float, relevance_df.corr().loc["sanitizer_alert", "noise_injection"]
-        ),
-        ctx=ctx,
+    logger.info(
+        """\# Detected~Mis-pred. / \#Total~Detected~Data~Error: {:.2f}""".format(
+            detected_pred_error_num / error_detected.sum()
+        )
     )
 
-    # append the row to the JSONL file
-    with open(SAN_ANALYSIS_OUTPUT_JSONL_PATH, "a") as f:
-        f.write(dump_item.model_dump_json() + "\n")
+    # $\frac{\text{\# Missed~Mis-pred.}}{\text{\#Total~Missed~Data~Error}}$
+    logger.info(
+        """\# Missed~Mis-pred. / \#Total~Missed~Data~Error: {:.2f}""".format(
+            (total_pred_error_num - detected_pred_error_num)
+            / (error_injected.sum() - error_detected.sum())
+        )
+    )
+
+    if SAN_ANALYSIS_OUTPUT_JSONL_PATH is not None:
+        dump_item = RelevanceAnalysisDumpItem(
+            total_pred_error_num=total_pred_error_num,
+            detected_pred_error_num=detected_pred_error_num,
+            actual_data_error_num=error_injected.sum(),
+            detected_data_error_num=error_detected.sum(),
+            data_error_caused_pred_error=data_error_caused_pred_error,
+            total_input_num=len(df),
+            falsely_detected_data_error_num=falsely_detected_data_error_num,
+            corr_prediction_error_sanitizer_alert=cast(
+                float, relevance_df.corr().loc["prediction_error", "sanitizer_alert"]
+            ),
+            corr_prediction_error_noise_injection=cast(
+                float, relevance_df.corr().loc["prediction_error", "noise_injection"]
+            ),
+            corr_sanitizer_alert_noise_injection=cast(
+                float, relevance_df.corr().loc["sanitizer_alert", "noise_injection"]
+            ),
+            ctx=ctx,
+        )
+
+        # append the row to the JSONL file
+        logger.info(f"Dumping relevance analysis result to {SAN_ANALYSIS_OUTPUT_JSONL_PATH}")
+        with open(SAN_ANALYSIS_OUTPUT_JSONL_PATH, "a") as f:
+            f.write(dump_item.model_dump_json() + "\n")
 
     if ctx is not None:
         ctx.call_index += 1
@@ -204,7 +225,7 @@ def comparative_analysis(
     original_noise_injected_num = noise_injected.sum()
     total_input_num = len(df)
 
-    dump_item = ComparativeAnalysisDumpEntry(
+    dump_item = ComparativeAnalysisDumpItem(
         original_prediction_error_num=original_prediction_error_num,
         rectified_prediction_error_num=rectified_prediction_error_num,
         noise_injected_num=original_noise_injected_num,
@@ -214,6 +235,7 @@ def comparative_analysis(
     )
 
     # append the row to the JSONL file
+    logger.info(f"Dumping comparative analysis result to {SAN_ANALYSIS_OUTPUT_JSONL_PATH}")
     with open(SAN_ANALYSIS_OUTPUT_JSONL_PATH, "a") as f:
         f.write(dump_item.model_dump_json() + "\n")
 

@@ -93,13 +93,13 @@ class AutoGluonModel(InferenceModel):
             raise TypeError(f"Model is not an instance of TabularPredictor: {model}")
 
         if os.path.isfile(os.path.join(model_path, "nsyn_prog.pkl")):
-            logger.info("Loading sanitizer...")
+            logger.info("Loading guardrail...")
             with open(os.path.join(model_path, "nsyn_prog.pkl"), "rb") as f:
                 sanitizer = pickle.load(f)
                 assert isinstance(sanitizer, DSLProg)
-            logger.info("Sanitizer loaded.")
+            logger.info("Guardrail loaded.")
         else:
-            logger.info("No sanitizer found.")
+            logger.info("No guardrail found.")
             sanitizer = None
         return cls(
             inference_model_config=model_config,
@@ -148,7 +148,7 @@ class AutoGluonModel(InferenceModel):
 
         # when sanitizer is enabled but not loaded, raise error
         if self.sanitizer is None:
-            raise ValueError("Sanitizer is not loaded.")
+            raise ValueError("Guardrail is not loaded.")
 
         if SAN_COMPARATIVE_ANALYSIS_FLAG:
             original_model_input_df = df[self.inference_model_config.feature_columns]
@@ -169,7 +169,7 @@ class AutoGluonModel(InferenceModel):
             sanitizer_alert = self.sanitizer.evaluate_df(df)
 
             logger.info(
-                f"Sanitizer found {sanitizer_alert.sum()} errors out of {len(sanitizer_alert)} rows of data."
+                f"Guardrail found {sanitizer_alert.sum()} errors out of {len(sanitizer_alert)} rows of data."
             )
 
             relevance_analysis(

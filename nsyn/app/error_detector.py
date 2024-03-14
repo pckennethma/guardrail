@@ -101,3 +101,36 @@ class ErrorDetector(BaseModel):
             for future in futures:
                 errors.extend(future)
         return errors
+
+if __name__ == "__main__":
+    import argparse, pickle, sklearn
+    from nsyn.app.ml_backend.auto import get_inference_model
+
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data-path", "-d", type=str, required=True)
+    parser.add_argument("--prog-path", "-p", type=str, required=True)
+    args = parser.parse_args()
+
+    data = pd.read_csv(args.data_path)
+    with open(args.prog_path, "rb") as f:
+        prog: DSLProg = pickle.load(f)
+    
+    alerts = prog.evaluate_df(data)
+    actual_error = data["_nsyn_noisy_injected"]
+    # compute metrics
+    tp = np.sum((alerts == 1) & (actual_error == 1))
+    tn = np.sum((alerts == 0) & (actual_error == 0))
+    fp = np.sum((alerts == 1) & (actual_error == 0))
+    fn = np.sum((alerts == 0) & (actual_error == 1))
+    precision = tp / (tp + fp)
+    recall = tp / (tp + fn)
+    f1 = 2 * (precision * recall) / (precision + recall)
+    accuracy = (tp + tn) / (tp + tn + fp + fn)
+    print(f"Precision: {precision:.2f}")
+    print(f"Recall: {recall:.2f}")
+    print(f"F1: {f1:.2f}")
+    print(f"Accuracy: {accuracy:.2f}")
+    print(f"TP: {tp}, TN: {tn}, FP: {fp}, FN: {fn}")
+    print(f"Total error: {np.sum(actual_error)}")
+    print(f"Detected error: {np.sum(alerts)}")
