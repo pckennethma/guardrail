@@ -1,6 +1,6 @@
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Callable
+from typing import Any, Callable, List, Optional, overload
 
 import numpy as np
 import pandas as pd
@@ -19,13 +19,15 @@ from nsyn.util.mec import MEC
 logger = get_logger(name="nsyn.learner")
 
 
-def learner_timer(func: Callable[..., MEC]) -> Callable[..., MEC]:
-    def wrapper(*args: Any, **kwargs: Any) -> MEC:
+def learner_timer(
+    func: Callable[..., tuple[MEC, Optional[List[str]]]]
+) -> Callable[..., tuple[MEC, Optional[List[str]]]]:
+    def wrapper(*args: Any, **kwargs: Any) -> tuple[MEC, Optional[List[str]]]:
         start = time.time()
         logger.info(f"Starting {func.__name__}...")
-        mec = func(*args, **kwargs)
+        rlt = func(*args, **kwargs)
         logger.info(f"Finished {func.__name__} in {time.time() - start:.2f} seconds.")
-        return mec
+        return rlt
 
     return wrapper
 
@@ -41,10 +43,22 @@ class BaseLearner(ABC):
         pd_to_np: Utility method to convert a pandas DataFrame to a numpy array, suitable for processing in the learn method.
     """
 
+    @overload
+    def learn(
+        self, data: pd.DataFrame, sampling_protocol: AbstractSampler
+    ) -> tuple[MEC, List[str]]:
+        ...
+
+    @overload
+    def learn(
+        self, data: np.ndarray, sampling_protocol: AbstractSampler
+    ) -> tuple[MEC, None]:
+        ...
+
     @abstractmethod
     def learn(
         self, data: np.ndarray | pd.DataFrame, sampling_protocol: AbstractSampler
-    ) -> MEC:
+    ) -> tuple[MEC, Optional[List[str]]]:
         """
         Abstract method to learn from the data.
 
@@ -73,8 +87,10 @@ class BaseLearner(ABC):
         # then converts the remaining columns to categorical values.
         # Finally, converts the categorical values to integers and returns the numpy array.
 
-        # Drop all numeric columns
-        data = data.select_dtypes(exclude=["number"])
+        # Drop all columns with more than 10 unique values
+        data = data.drop(
+            columns=[col for col in data.columns if len(data[col].unique()) > 10]
+        )
 
         # Convert all columns to categorical values
         data = data.astype("category")
@@ -95,10 +111,22 @@ class PC(BaseLearner, BaseModel):
         learn: Implements the PC algorithm to learn and return a MEC from the given data and sampling protocol.
     """
 
+    @overload
+    def learn(
+        self, data: pd.DataFrame, sampling_protocol: AbstractSampler
+    ) -> tuple[MEC, List[str]]:
+        ...
+
+    @overload
+    def learn(
+        self, data: np.ndarray, sampling_protocol: AbstractSampler
+    ) -> tuple[MEC, None]:
+        ...
+
     @learner_timer
     def learn(
         self, data: np.ndarray | pd.DataFrame, sampling_protocol: AbstractSampler
-    ) -> MEC:
+    ) -> tuple[MEC, Optional[List[str]]]:
         """
         Implements the PC algorithm to learn a Markov Equivalence Class from the data.
 
@@ -109,12 +137,14 @@ class PC(BaseLearner, BaseModel):
         Returns:
             MEC: A Markov Equivalence Class derived from the data using the PC algorithm.
         """
+        retained_columns: Optional[List[str]] = None
         if isinstance(data, pd.DataFrame):
+            retained_columns = data.columns.tolist()
             data = self.pd_to_np(data)
         transformed_data = sampling_protocol.sample(data)
         logger.info(f"PC: transformed_data.shape = {transformed_data.shape}")
         cg = pc(transformed_data, indep_test=chisq)
-        return ggraph2mec(cg.G)
+        return ggraph2mec(cg.G), retained_columns
 
 
 class GES(BaseLearner, BaseModel):
@@ -127,10 +157,22 @@ class GES(BaseLearner, BaseModel):
         learn: Implements the GES algorithm to learn and return a MEC from the given data and sampling protocol.
     """
 
+    @overload
+    def learn(
+        self, data: pd.DataFrame, sampling_protocol: AbstractSampler
+    ) -> tuple[MEC, List[str]]:
+        ...
+
+    @overload
+    def learn(
+        self, data: np.ndarray, sampling_protocol: AbstractSampler
+    ) -> tuple[MEC, None]:
+        ...
+
     @learner_timer
     def learn(
         self, data: np.ndarray | pd.DataFrame, sampling_protocol: AbstractSampler
-    ) -> MEC:
+    ) -> tuple[MEC, Optional[List[str]]]:
         """
         Implements the GES algorithm to learn a Markov Equivalence Class from the data.
 
@@ -141,13 +183,15 @@ class GES(BaseLearner, BaseModel):
         Returns:
             MEC: A Markov Equivalence Class derived from the data using the GES algorithm.
         """
+        retained_columns: Optional[List[str]] = None
         if isinstance(data, pd.DataFrame):
+            retained_columns = data.columns.tolist()
             data = self.pd_to_np(data)
         transformed_data = sampling_protocol.sample(data)
         logger.info(f"GES: transformed_data.shape = {transformed_data.shape}")
         cg = ges(transformed_data, score_func="local_score_BDeu", maxP=3)["G"]
         assert isinstance(cg, GeneralGraph), f"cg is not a GeneralGraph: {type(cg)}"
-        return ggraph2mec(cg)
+        return ggraph2mec(cg), retained_columns
 
 
 class BLIP(BaseLearner, BaseModel):
@@ -160,10 +204,22 @@ class BLIP(BaseLearner, BaseModel):
         learn: Implements the BLIP algorithm to learn and return a MEC from the given data and sampling protocol.
     """
 
+    @overload
+    def learn(
+        self, data: pd.DataFrame, sampling_protocol: AbstractSampler
+    ) -> tuple[MEC, List[str]]:
+        ...
+
+    @overload
+    def learn(
+        self, data: np.ndarray, sampling_protocol: AbstractSampler
+    ) -> tuple[MEC, None]:
+        ...
+
     @learner_timer
     def learn(
         self, data: np.ndarray | pd.DataFrame, sampling_protocol: AbstractSampler
-    ) -> MEC:
+    ) -> tuple[MEC, Optional[List[str]]]:
         """
         Implements the BLIP algorithm to learn a Markov Equivalence Class from the data.
 
@@ -174,11 +230,13 @@ class BLIP(BaseLearner, BaseModel):
         Returns:
             MEC: A Markov Equivalence Class derived from the data using the BLIP algorithm.
         """
-
+        retained_columns: Optional[List[str]] = None
         if isinstance(data, pd.DataFrame):
+            retained_columns = data.columns.tolist()
             data = self.pd_to_np(data)
+        logger.info(f"BLIP: data.shape = {data.shape}")
         transformed_data = sampling_protocol.sample(data)
         logger.info(f"BLIP: transformed_data.shape = {transformed_data.shape}")
         cg = run_blip(transformed_data)
         assert isinstance(cg, GeneralGraph), f"cg is not a GeneralGraph: {type(cg)}"
-        return ggraph2mec(cg)
+        return ggraph2mec(cg), retained_columns

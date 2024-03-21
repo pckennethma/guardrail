@@ -101,21 +101,39 @@ class Search(BaseModel):
             stmt_cache=stmt_cache,
         )
 
-    def _synthesis_from_dag(self, dag: DAG) -> DSLProg:
+    def _synthesis_from_dag(
+        self, dag: DAG, retained_columns: Optional[List[str]]
+    ) -> DSLProg:
         """
         Synthesizes a DSL program from a given Directed Acyclic Graph (DAG).
 
         Args:
             dag (DAG): The DAG used for synthesizing the program.
+            retained_columns (List[str]): The list of columns to retain in the program.
 
         Returns:
             DSLProg: A DSL program synthesized from the DAG.
         """
         prog = DSLProg()
-        for dependent_idx, _ in enumerate(self.columns):
-            determinants = dag.get_parents(dependent_idx)
-            if stmt := self._get_stmt(determinants, dependent_idx):
-                prog.add_stmt(stmt)
+        if retained_columns is None:
+            for dependent_idx, _ in enumerate(self.columns):
+                determinants = dag.get_parents(dependent_idx)
+                if stmt := self._get_stmt(determinants, dependent_idx):
+                    prog.add_stmt(stmt)
+        else:
+            for dependent_idx, _ in enumerate(retained_columns):
+                determinants_indices = dag.get_parents(dependent_idx)
+                recovered_determinants_indices = [
+                    self.columns.index(retained_columns[i])
+                    for i in determinants_indices
+                ]
+                recovered_dependent_idx = self.columns.index(
+                    retained_columns[dependent_idx]
+                )
+                if stmt := self._get_stmt(
+                    recovered_determinants_indices, recovered_dependent_idx
+                ):
+                    prog.add_stmt(stmt)
         return prog
 
     def _get_stmt(
@@ -150,12 +168,14 @@ class Search(BaseModel):
     def _stochastic_search_over_mec(
         self,
         mec: MEC,
+        retained_columns: Optional[List[str]],
     ) -> Optional[DSLProg]:
         """
         Performs stochastic search over a given Markov Equivalence Class (MEC). (Not implemented)
 
         Args:
             mec (MEC): The MEC to perform the search over.
+            retained_columns (Optional[List[str]]): The list of columns to retain in the program.
 
         Raises:
             NotImplementedError: Indicates that the method is not yet implemented.
@@ -165,12 +185,14 @@ class Search(BaseModel):
     def _exact_search_over_mec(
         self,
         mec: MEC,
+        retained_columns: Optional[List[str]],
     ) -> Optional[DSLProg]:
         """
         Performs exact search over a given Markov Equivalence Class (MEC).
 
         Args:
             mec (MEC): The MEC to perform the search over.
+            retained_columns (Optional[List[str]]): The list of columns to retain in the program.
 
         Returns:
             Optional[DSLProg]: The best DSL program found during the search, if any.
@@ -179,7 +201,7 @@ class Search(BaseModel):
         best_prog = None
 
         def _run_dag(dag: DAG) -> DSLProg:
-            return self._synthesis_from_dag(dag)
+            return self._synthesis_from_dag(dag, retained_columns)
 
         for uncast_prog in p_uimap(
             _run_dag, DAG.enumerate_markov_equivalent_dags(mec), num_cpus=_NUM_WORKERS
@@ -199,13 +221,15 @@ class Search(BaseModel):
             Optional[DSLProg]: The best DSL program found during the search, if any.
         """
         logger.info("Starting MEC learning")
-        mec = self.LearningAlgo.learn(self.input_data, self.SamplingAlgo)
+        mec, retained_columns = self.LearningAlgo.learn(
+            self.input_data, self.SamplingAlgo
+        )
         logger.info("MEC learning complete.")
         logger.info(f"# Edge: {len(mec.get_edges())}")
         logger.info(f"# Undirected edge: {len(mec.get_undirected_edges())}")
         if self.search_strategy == "stochastic":
-            prog = self._stochastic_search_over_mec(mec)
+            prog = self._stochastic_search_over_mec(mec, retained_columns)
         else:
-            prog = self._exact_search_over_mec(mec)
+            prog = self._exact_search_over_mec(mec, retained_columns)
         logger.info("Search complete.")
         return prog

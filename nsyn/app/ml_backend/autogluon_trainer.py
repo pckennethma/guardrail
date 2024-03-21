@@ -36,7 +36,9 @@ def main(
         train_df = train_df[feature_columns + [label_column]]
         test_df = test_df[feature_columns + [label_column]]
     else:
-        logger.info(f"Using all columns except {label_column} as features.")
+        logger.info(
+            f"Using all columns except {label_column} as features: {train_df.columns}"
+        )
 
     if train_df[label_column].isnull().any():
         logger.warning(

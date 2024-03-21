@@ -1,5 +1,6 @@
 import os
 import pathlib
+from typing import Optional
 from uuid import uuid4
 
 # This flag `DISABLE_SANITIZER_FLAG` is used to control whether or not to
@@ -43,11 +44,14 @@ SAN_COMPARATIVE_ANALYSIS_FLAG = (
 # be generated.
 _folder = pathlib.Path(__file__).parent.parent.parent / "statistics"
 os.makedirs(_folder, exist_ok=True)
-SAN_ANALYSIS_OUTPUT_JSONL_PATH = os.getenv(
-    "NSYN_Q2_RELEVANCE_ANALYSIS_CSV_PATH", str( _folder / f"ra-{uuid4()}.jsonl")
+SAN_ANALYSIS_OUTPUT_JSONL_PATH: Optional[str]
+_env_SAN_ANALYSIS_OUTPUT_JSONL_PATH = os.getenv(
+    "NSYN_Q2_RELEVANCE_ANALYSIS_CSV_PATH", str(_folder / f"ra-{uuid4()}.jsonl")
 )
-if SAN_ANALYSIS_OUTPUT_JSONL_PATH.lower() == "none":
+if _env_SAN_ANALYSIS_OUTPUT_JSONL_PATH.lower() == "none":
     SAN_ANALYSIS_OUTPUT_JSONL_PATH = None
+else:
+    SAN_ANALYSIS_OUTPUT_JSONL_PATH = _env_SAN_ANALYSIS_OUTPUT_JSONL_PATH
 
 # This flag `ERROR_HANDLING_FLAG` is used to control the error handling
 # strategy during the execution of the Query 2.0. There are three options:

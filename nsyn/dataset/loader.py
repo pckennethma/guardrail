@@ -1,5 +1,5 @@
 import os
-from typing import Literal
+from typing import Literal, overload
 
 import pandas as pd
 
@@ -8,6 +8,7 @@ _DATASET_PATH = {
     "lung_cancer": "datasets/lung_cancer.csv",
     "insurance": "datasets/insurance.csv",
     "bird_strikes": "datasets/bird_strikes.csv",
+    "credit_card": "datasets/credit_card.csv",
 }
 
 
@@ -44,6 +45,18 @@ def load_data_by_name_and_vers(name: str, vers: str) -> pd.DataFrame:
         if not os.path.isfile(df_path):
             raise ValueError(f"Dataset {name} with version {vers} does not exist.")
         return load_df(df_path)
+
+
+@overload
+def load_ml_data_by_name(name: str, split: Literal["train", "test"]) -> pd.DataFrame:
+    ...
+
+
+@overload
+def load_ml_data_by_name(
+    name: str, split: Literal["all"]
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    ...
 
 
 def load_ml_data_by_name(

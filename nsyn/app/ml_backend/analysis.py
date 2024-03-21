@@ -140,6 +140,16 @@ def relevance_analysis(
         )
         falsely_detected_data_error_num = (sanitizer_alert & ~error_injected).sum()
 
+        # precision
+        logger.info(
+            """Precision: {:.2f}""".format(error_detected.sum() / sanitizer_alert.sum())
+        )
+
+        # recall
+        logger.info(
+            """Recall: {:.2f}""".format(error_detected.sum() / error_injected.sum())
+        )
+
     relevance_df = pd.DataFrame(
         {
             "prediction_error": prediction_errors,
@@ -153,7 +163,9 @@ def relevance_analysis(
         & (relevance_df["prediction_error"] == True)  # noqa: E712
     ].shape[0]
 
-    logger.info(f"{detected_pred_error_num} prediction errors are detected by sanitizer.")
+    logger.info(
+        f"{detected_pred_error_num} prediction errors are detected by sanitizer."
+    )
 
     logger.info(f"SANITIZER_RELEVANCE_ANALYSIS:\n{relevance_df.corr()}")
 
@@ -193,7 +205,9 @@ def relevance_analysis(
         )
 
         # append the row to the JSONL file
-        logger.info(f"Dumping relevance analysis result to {SAN_ANALYSIS_OUTPUT_JSONL_PATH}")
+        logger.info(
+            f"Dumping relevance analysis result to {SAN_ANALYSIS_OUTPUT_JSONL_PATH}"
+        )
         with open(SAN_ANALYSIS_OUTPUT_JSONL_PATH, "a") as f:
             f.write(dump_item.model_dump_json() + "\n")
 
@@ -235,9 +249,12 @@ def comparative_analysis(
     )
 
     # append the row to the JSONL file
-    logger.info(f"Dumping comparative analysis result to {SAN_ANALYSIS_OUTPUT_JSONL_PATH}")
-    with open(SAN_ANALYSIS_OUTPUT_JSONL_PATH, "a") as f:
-        f.write(dump_item.model_dump_json() + "\n")
+    if SAN_ANALYSIS_OUTPUT_JSONL_PATH is not None:
+        logger.info(
+            f"Dumping comparative analysis result to {SAN_ANALYSIS_OUTPUT_JSONL_PATH}"
+        )
+        with open(SAN_ANALYSIS_OUTPUT_JSONL_PATH, "a") as f:
+            f.write(dump_item.model_dump_json() + "\n")
 
     if ra_ctx is not None:
         ra_ctx.call_index += 1

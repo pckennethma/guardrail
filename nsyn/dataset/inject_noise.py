@@ -5,7 +5,6 @@ import random
 from typing import List, Literal
 
 import numpy as np
-import pandas as pd
 
 from nsyn.app.ml_backend.auto import get_inference_model
 from nsyn.dataset.loader import get_df_path_with_version, load_ml_data_by_name
@@ -56,12 +55,11 @@ def inject_noise(
     logger.info(f"Loaded model from {model_path}")
 
     test_df = load_ml_data_by_name(dataset_name, "test")
-    assert isinstance(test_df, pd.DataFrame)
     logger.info(f"Labeled test df shape: {test_df.shape}")
 
     label_column = model.inference_model_config.label_column
     logger.info(f"Label column: {label_column}")
-    correct_df = test_df[test_df[label_column] == model.predict(test_df)]
+    correct_df = test_df[test_df[label_column] == model.predict(test_df)].copy()
     logger.info(f"Correctly predicted df shape: {correct_df.shape}")
 
     nsyn_prog_path = os.path.join(model_path, "nsyn_prog.pkl")
@@ -70,38 +68,57 @@ def inject_noise(
         assert isinstance(nsyn_prog, DSLProg)
     logger.info(f"Loaded nsyn program from {nsyn_prog_path}")
 
+    correct_df = correct_df[~nsyn_prog.evaluate_df(correct_df)].copy()
+
+    logger.info(
+        f"Evaluating nsyn program on correctly predicted df with shape: {correct_df.shape}"
+    )
+
     target_columns = [
         stmt.dependent for stmt in nsyn_prog.stmts if stmt.dependent != label_column
     ]
     logger.info(f"Target columns: {target_columns}")
 
-    correct_df["_nsyn_noisy_injected"] = False
+    correct_df["_nsyn_noisy_injected"] = [False] * len(correct_df)
+    # Determine the number of values to replace
+    num_values_to_replace = int(noise_level * len(correct_df))
+    # Replace values in randomly selected rows
+    subsampled_indices = np.random.choice(
+        correct_df.index, size=num_values_to_replace, replace=False
+    )
+    # correct_df.loc[subsampled_indices, "_nsyn_noisy_injected"] = True
+
     for column in target_columns:
-        # Determine the number of values to replace
-        num_values_to_replace = int(noise_level * len(correct_df))
-        # Replace values in randomly selected rows
-        subsampled_indices = np.random.choice(
-            correct_df.index, size=num_values_to_replace, replace=False
-        )
-        correct_df.loc[subsampled_indices, "_nsyn_noisy_injected"] = True
         if correct_df[column].dtype == object:
             # Pre-compute unique values including '<UNK>'
             possible_values = correct_df[column].unique().tolist() + ["<UNK>"]
             weights: List[float] = np.ones(len(possible_values)).tolist()
-            weights[-1] = 10
-            # Randomly choose new values for a subset of rows
-            random_values = random.choices(
-                possible_values, weights=weights, k=num_values_to_replace
-            )
-            correct_df.loc[subsampled_indices, column] = random_values
+            weights[-1] = 10  # Increase the weight for '<UNK>'
+
+            for index in subsampled_indices:
+                current_value = correct_df.at[index, column]
+                # Ensure selection of a different value than the current one
+                new_value_choices = [
+                    value for value in possible_values if value != current_value
+                ]
+                new_value = random.choices(new_value_choices, k=1)[0]
+                # Assign new value if it's different from the current value
+                if new_value != current_value:
+                    correct_df.at[index, column] = new_value
+                    correct_df.at[index, "_nsyn_noisy_injected"] = True
+
         elif correct_df[column].dtype == bool:
-            # Flip the values of a random subset of rows for boolean columns
-            correct_df.loc[subsampled_indices, column] = ~correct_df.loc[
-                subsampled_indices, column
-            ]
+            # For boolean, simply flip the value
+            for index in subsampled_indices:
+                current_value = correct_df.at[index, column]
+                correct_df.at[index, column] = not current_value
+                correct_df.at[index, "_nsyn_noisy_injected"] = True
+
         else:
-            # Directly assign NaN to a random subset of rows for numeric columns
-            correct_df.loc[subsampled_indices, column] = np.nan
+            # For numeric columns, you can assign NaN or another logic if needed
+            for index in subsampled_indices:
+                correct_df.at[index, column] = np.nan
+                correct_df.at[index, "_nsyn_noisy_injected"] = True
 
     correct_df.to_csv(
         get_df_path_with_version(dataset_name, output_version), index=False

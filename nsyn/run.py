@@ -27,6 +27,8 @@ def run_search(
     sampler = AuxiliarySampler()
     learner: BaseLearner
 
+    logger.info(f"Input data shape: {data.shape}")
+
     if learner_name == "auto":
         learner = BLIP()
     elif learner_name == "pc":

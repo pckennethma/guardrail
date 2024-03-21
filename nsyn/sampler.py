@@ -17,10 +17,10 @@ def truncate_large_output(func: Callable) -> Callable[..., np.ndarray]:
         output = func(*args, **kwargs)
         if (
             isinstance(output, np.ndarray)
-            and output.size > LARGE_DATA_TRUNCATION_THRESHOLD
+            and output.shape[0] > LARGE_DATA_TRUNCATION_THRESHOLD
         ):
             logger.warning(
-                f"Output of {func.__name__} is too large {output.size}. Truncating to {LARGE_DATA_TRUNCATION_THRESHOLD}"
+                f"Output of {func.__name__} is too large {output.shape[0]}. Truncating to {LARGE_DATA_TRUNCATION_THRESHOLD}"
             )
             # randomly sample LARGE_DATA_TRUNCATION_THRESHOLD elements from the output
             output = output[
