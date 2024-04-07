@@ -124,31 +124,35 @@ def relevance_analysis(
 
     if "_nsyn_noisy_injected" not in df.columns:
         error_injected = pd.Series([False] * len(df))
+        logger.warning(
+            "_nsyn_noisy_injected column not found in input data. Assuming no data errors."
+        )
     else:
         error_injected = df["_nsyn_noisy_injected"]
-        logger.info(
-            f"Ground truth: {error_injected.sum()} rows of data with actual data errors."
-        )
-        error_detected = sanitizer_alert & error_injected
-        logger.info(
-            f"Out of {error_injected.sum()} rows of data with actual data errors, {error_detected.sum()} are detected by sanitizer."
-        )
-        noise_induced_error = prediction_errors & error_injected
-        data_error_caused_pred_error = noise_induced_error.sum()
-        logger.info(
-            f"Out of {total_pred_error_num} prediction errors, {data_error_caused_pred_error} are induced by data errors."
-        )
-        falsely_detected_data_error_num = (sanitizer_alert & ~error_injected).sum()
 
-        # precision
-        logger.info(
-            """Precision: {:.2f}""".format(error_detected.sum() / sanitizer_alert.sum())
-        )
+    logger.info(
+        f"Ground truth: {error_injected.sum()} rows of data with actual data errors."
+    )
+    error_detected = sanitizer_alert & error_injected
+    logger.info(
+        f"Out of {error_injected.sum()} rows of data with actual data errors, {error_detected.sum()} are detected by sanitizer."
+    )
+    noise_induced_error = prediction_errors & error_injected
+    data_error_caused_pred_error = noise_induced_error.sum()
+    logger.info(
+        f"Out of {total_pred_error_num} prediction errors, {data_error_caused_pred_error} are induced by data errors."
+    )
+    falsely_detected_data_error_num = (sanitizer_alert & ~error_injected).sum()
 
-        # recall
-        logger.info(
-            """Recall: {:.2f}""".format(error_detected.sum() / error_injected.sum())
-        )
+    # precision
+    logger.info(
+        """Precision: {:.2f}""".format(error_detected.sum() / sanitizer_alert.sum())
+    )
+
+    # recall
+    logger.info(
+        """Recall: {:.2f}""".format(error_detected.sum() / error_injected.sum())
+    )
 
     relevance_df = pd.DataFrame(
         {

@@ -9,6 +9,7 @@ _DATASET_PATH = {
     "insurance": "datasets/insurance.csv",
     "bird_strikes": "datasets/bird_strikes.csv",
     "credit_card": "datasets/credit_card.csv",
+    "hotel_bookings": "datasets/hotel_bookings.csv",
 }
 
 

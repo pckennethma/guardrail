@@ -2,7 +2,9 @@ import argparse
 import os
 import pickle
 import random
-from typing import Hashable, Literal
+from typing import List, Literal
+
+import numpy as np
 
 from nsyn.app.ml_backend.auto import get_inference_model
 from nsyn.dataset.loader import get_df_path_with_version, load_ml_data_by_name
@@ -66,57 +68,59 @@ def inject_noise(
         assert isinstance(nsyn_prog, DSLProg)
     logger.info(f"Loaded nsyn program from {nsyn_prog_path}")
 
-    controllable_tuples: dict[Hashable, list[str]] = {}
+    # correct_df = correct_df[~nsyn_prog.evaluate_df(correct_df)].copy()
 
-    for stmt in nsyn_prog.stmts:
-        controllable_indices = [
-            index
-            for index, row in correct_df.iterrows()
-            if stmt.evaluate(row.to_dict())
-        ]
-        controllable_tuples.update(
-            {
-                index: [stmt.dependent]
-                if index not in controllable_tuples
-                else controllable_tuples[index] + [stmt.dependent]
-                for index in controllable_indices
-            }
-        )
+    # logger.info(
+    #     f"Evaluating nsyn program on correctly predicted df with shape: {correct_df.shape}"
+    # )
 
-    logger.info(f"# Controllable tuples: {len(controllable_tuples)}")
-
-    correct_df["_nsyn_controllable_columns"] = [
-        controllable_tuples.get(index, []) for index in correct_df.index
-    ]
-    controllable_df = correct_df.loc[list(controllable_tuples.keys())].copy()
-    controllable_df.at[:, "_nsyn_noisy_injected"] = [True] * len(controllable_df)
-
-    global_target_columns = [
+    target_columns = [
         stmt.dependent for stmt in nsyn_prog.stmts if stmt.dependent != label_column
     ]
+    logger.info(f"Target columns: {target_columns}")
 
-    target_column_values = {
-        column: correct_df[column].unique().tolist()
-        + (
-            [None]
-            if correct_df[column].dtype == object
-            else (
-                [0] if correct_df[column].dtype in [int, float] else []  # type: ignore
-            )
-        )
-        for column in global_target_columns
-    }
+    correct_df["_nsyn_noisy_injected"] = [False] * len(correct_df)
+    # Determine the number of values to replace
+    num_values_to_replace = int(noise_level * len(correct_df))
+    # Replace values in randomly selected rows
+    subsampled_indices = np.random.choice(
+        correct_df.index, size=num_values_to_replace, replace=False
+    )
+    # correct_df.loc[subsampled_indices, "_nsyn_noisy_injected"] = True
 
-    for index, row in controllable_df.iterrows():
-        column = random.choice(row["_nsyn_controllable_columns"])
-        # Pre-compute unique values including '<UNK>'
-        possible_values = [
-            value for value in target_column_values[column] if value != row[column]
-        ]
-        choice = random.choice(possible_values)
-        controllable_df.at[index, column] = choice
+    for column in target_columns:
+        if correct_df[column].dtype == object:
+            # Pre-compute unique values including '<UNK>'
+            possible_values = correct_df[column].unique().tolist() + ["<UNK>"]
+            weights: List[float] = np.ones(len(possible_values)).tolist()
+            weights[-1] = 10  # Increase the weight for '<UNK>'
 
-    controllable_df.to_csv(
+            for index in subsampled_indices:
+                current_value = correct_df.at[index, column]
+                # Ensure selection of a different value than the current one
+                new_value_choices = [
+                    value for value in possible_values if value != current_value
+                ]
+                new_value = random.choices(new_value_choices, k=1)[0]
+                # Assign new value if it's different from the current value
+                if new_value != current_value:
+                    correct_df.at[index, column] = new_value
+                    correct_df.at[index, "_nsyn_noisy_injected"] = True
+
+        elif correct_df[column].dtype == bool:
+            # For boolean, simply flip the value
+            for index in subsampled_indices:
+                current_value = correct_df.at[index, column]
+                correct_df.at[index, column] = not current_value
+                correct_df.at[index, "_nsyn_noisy_injected"] = True
+
+        else:
+            # For numeric columns, you can assign NaN or another logic if needed
+            for index in subsampled_indices:
+                correct_df.at[index, column] = np.nan
+                correct_df.at[index, "_nsyn_noisy_injected"] = True
+
+    correct_df.to_csv(
         get_df_path_with_version(dataset_name, output_version), index=False
     )
     logger.info(
@@ -137,7 +141,7 @@ if __name__ == "__main__":
         "--output_version",
         "-o",
         type=str,
-        default="noisy",
+        required=True,
         help="The version of the output dataset.",
     )
     parser.add_argument(

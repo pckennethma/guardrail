@@ -1,0 +1,2 @@
+SELECT count(M1) FROM hotel_bookings.noisy
+M1: hotel_bookings-ae8f2132-da4c-4361-9b92-fcf3cea8bec9, autogluon # M1 is a classification model to predict whether the reservation is likely to be canceled.

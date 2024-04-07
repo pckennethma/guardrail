@@ -43,7 +43,7 @@ def run_search(
         learning_algorithm=learner,
         sampling_algorithm=sampler,
         input_data=data,
-        epsilon=0.05,
+        epsilon=0.01,
     )
     result = search.run()
     assert isinstance(result, DSLProg)

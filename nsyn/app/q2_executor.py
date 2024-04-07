@@ -531,7 +531,7 @@ if __name__ == "__main__":
         "--query_path",
         "-p",
         type=str,
-        help="The path to the query file. It can be either a single query file or a folder containing multiple query files (with .sql extension). If specified, the following arguments will be ignored.",
+        help="The path to the query file (.sql). It can be either a single query file or a folder containing multiple query files (with .sql extension). If specified, the following arguments will be ignored.",
     )
     parser.add_argument(
         "--query",

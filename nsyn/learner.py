@@ -87,10 +87,11 @@ class BaseLearner(ABC):
         # then converts the remaining columns to categorical values.
         # Finally, converts the categorical values to integers and returns the numpy array.
 
-        # Drop all columns with more than 10 unique values
-        data = data.drop(
-            columns=[col for col in data.columns if len(data[col].unique()) > 10]
-        )
+        if data.shape[0] > 2_000:
+            # Drop all columns with more than 10 unique values if the data is large
+            data = data.drop(
+                columns=[col for col in data.columns if len(data[col].unique()) > 10]
+            )
 
         # Convert all columns to categorical values
         data = data.astype("category")
