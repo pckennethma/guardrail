@@ -1,0 +1,2 @@
+SELECT AVG(jungle_chess_2pcs_raw_endgame_complete.white_piece0_rank) FROM jungle_chess_2pcs_raw_endgame_complete.noisy WHERE M1 == 'w'
+M1: jungle_chess_2pcs_raw_endgame_complete-0b06219a-5460-4945-9b55-e12d992c9421, autogluon

@@ -8,7 +8,7 @@ from nsyn.util.logger import get_logger
 
 logger = get_logger(name="nsyn.sampler")
 
-LARGE_DATA_TRUNCATION_THRESHOLD = 200_000
+LARGE_DATA_TRUNCATION_THRESHOLD = 200_000_000
 
 
 # add a decorator to truncate large data output

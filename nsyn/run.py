@@ -1,6 +1,8 @@
 import argparse
+import json
 import pickle
-from typing import cast
+import time
+from typing import Optional, cast
 
 import pandas as pd
 
@@ -8,7 +10,7 @@ from nsyn.app.error_detector import ErrorDetector
 from nsyn.dataset.loader import load_data_by_name, load_ml_data_by_name
 from nsyn.dsl.prog import DSLProg
 from nsyn.learner import BLIP, GES, PC, BaseLearner
-from nsyn.sampler import AuxiliarySampler
+from nsyn.sampler import AuxiliarySampler, IdentitySampler
 from nsyn.search import Search
 from nsyn.util.logger import get_logger
 
@@ -19,18 +21,23 @@ def run_search(
     data_name_or_df: str | pd.DataFrame,
     output_file: str,
     learner_name: str = "auto",
+    epsilon: float = 0.01,
+    enable_auxiliary_sampler: bool = True,
+    num_of_dags: None | int = None,
+    dag_save_path: Optional[str] = None,
 ) -> None:
     if isinstance(data_name_or_df, pd.DataFrame):
         data = data_name_or_df
     else:
         data = cast(pd.DataFrame, load_ml_data_by_name(data_name_or_df, "train"))
-    sampler = AuxiliarySampler()
+    sampler = AuxiliarySampler() if enable_auxiliary_sampler else IdentitySampler()
     learner: BaseLearner
 
     logger.info(f"Input data shape: {data.shape}")
 
     if learner_name == "auto":
         learner = BLIP()
+        learner.set_dag_save_path(dag_save_path)
     elif learner_name == "pc":
         learner = PC()
     elif learner_name == "ges":
@@ -43,9 +50,16 @@ def run_search(
         learning_algorithm=learner,
         sampling_algorithm=sampler,
         input_data=data,
-        epsilon=0.01,
+        epsilon=epsilon,
     )
+    start = time.time()
     result = search.run()
+    if num_of_dags is not None:
+        used_time = time.time() - start
+        log_file = output_file.replace(".pkl", ".json")
+        with open(log_file, "w") as f:
+            json.dump({"num_of_dags": num_of_dags, "used_time": used_time}, f)
+
     assert isinstance(result, DSLProg)
     logger.info(f"Result: {result}")
     logger.info(f"Statistics: {result.statistics}")

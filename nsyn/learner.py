@@ -1,3 +1,5 @@
+import os
+import pickle
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable, List, Optional, overload
@@ -71,7 +73,7 @@ class BaseLearner(ABC):
         """
         ...
 
-    def pd_to_np(self, data: pd.DataFrame) -> np.ndarray:
+    def pd_to_np(self, data: pd.DataFrame) -> tuple[np.ndarray, List[str]]:
         """
         Converts a pandas DataFrame to a numpy array by dropping numeric columns and converting
         categorical values to integers.
@@ -80,18 +82,22 @@ class BaseLearner(ABC):
             data (pd.DataFrame): The input DataFrame to be converted.
 
         Returns:
-            np.ndarray: The resulting numpy array after conversion.
+            tuple[np.ndarray, List[str]]: A tuple containing the numpy array and the list of retained columns.
         """
 
         # First drops all numeric columns
         # then converts the remaining columns to categorical values.
         # Finally, converts the categorical values to integers and returns the numpy array.
 
-        if data.shape[0] > 2_000:
+        if data.shape[1] > 5 and data.shape[0] > 400:
             # Drop all columns with more than 10 unique values if the data is large
+            threshold = max(15, data.shape[0] // 1000)
             data = data.drop(
-                columns=[col for col in data.columns if len(data[col].unique()) > 10]
+                columns=[
+                    col for col in data.columns if len(data[col].unique()) > threshold
+                ]
             )
+        retained_columns = data.columns.tolist()
 
         # Convert all columns to categorical values
         data = data.astype("category")
@@ -99,7 +105,7 @@ class BaseLearner(ABC):
         # Convert the categorical values to integers
         data = data.apply(lambda x: x.cat.codes)
 
-        return data.to_numpy()
+        return data.to_numpy(), retained_columns
 
 
 class PC(BaseLearner, BaseModel):
@@ -140,8 +146,8 @@ class PC(BaseLearner, BaseModel):
         """
         retained_columns: Optional[List[str]] = None
         if isinstance(data, pd.DataFrame):
-            retained_columns = data.columns.tolist()
-            data = self.pd_to_np(data)
+            data = data.dropna()
+            data, retained_columns = self.pd_to_np(data)
         transformed_data = sampling_protocol.sample(data)
         logger.info(f"PC: transformed_data.shape = {transformed_data.shape}")
         cg = pc(transformed_data, indep_test=chisq)
@@ -186,8 +192,8 @@ class GES(BaseLearner, BaseModel):
         """
         retained_columns: Optional[List[str]] = None
         if isinstance(data, pd.DataFrame):
-            retained_columns = data.columns.tolist()
-            data = self.pd_to_np(data)
+            data = data.dropna()
+            data, retained_columns = self.pd_to_np(data)
         transformed_data = sampling_protocol.sample(data)
         logger.info(f"GES: transformed_data.shape = {transformed_data.shape}")
         cg = ges(transformed_data, score_func="local_score_BDeu", maxP=3)["G"]
@@ -204,6 +210,15 @@ class BLIP(BaseLearner, BaseModel):
     Methods:
         learn: Implements the BLIP algorithm to learn and return a MEC from the given data and sampling protocol.
     """
+
+    dag_save_path: Optional[str] = None
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.dag_save_path = None
+
+    def set_dag_save_path(self, dag_save_path: str | None) -> None:
+        self.dag_save_path = dag_save_path
 
     @overload
     def learn(
@@ -233,11 +248,23 @@ class BLIP(BaseLearner, BaseModel):
         """
         retained_columns: Optional[List[str]] = None
         if isinstance(data, pd.DataFrame):
-            retained_columns = data.columns.tolist()
-            data = self.pd_to_np(data)
+            data = data.dropna()
+            data, retained_columns = self.pd_to_np(data)
+
         logger.info(f"BLIP: data.shape = {data.shape}")
         transformed_data = sampling_protocol.sample(data)
         logger.info(f"BLIP: transformed_data.shape = {transformed_data.shape}")
-        cg = run_blip(transformed_data)
+
+        if self.dag_save_path is None:
+            cg = run_blip(transformed_data)
+        else:
+            if os.path.exists(self.dag_save_path):
+                with open(self.dag_save_path, "rb") as f:
+                    cg = pickle.load(f)
+            else:
+                cg = run_blip(transformed_data)
+                with open(self.dag_save_path, "wb") as f:
+                    pickle.dump(cg, f)
+
         assert isinstance(cg, GeneralGraph), f"cg is not a GeneralGraph: {type(cg)}"
         return ggraph2mec(cg), retained_columns

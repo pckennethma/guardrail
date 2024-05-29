@@ -2,7 +2,13 @@ import argparse
 import os
 import pickle
 import random
+import sys
 from typing import Hashable, Literal
+
+import numpy as np
+import tqdm
+
+sys.path.append(".")
 
 from nsyn.app.ml_backend.auto import get_inference_model
 from nsyn.dataset.loader import get_df_path_with_version, load_ml_data_by_name
@@ -90,6 +96,12 @@ def inject_noise(
     ]
     controllable_df = correct_df.loc[list(controllable_tuples.keys())].copy()
     controllable_df.at[:, "_nsyn_noisy_injected"] = [True] * len(controllable_df)
+    # Determine the number of values to replace
+    num_values_to_replace = int(noise_level * len(correct_df))
+    # Replace values in randomly selected rows
+    subsampled_indices = np.random.choice(
+        correct_df.index, size=num_values_to_replace, replace=False
+    )
 
     global_target_columns = [
         stmt.dependent for stmt in nsyn_prog.stmts if stmt.dependent != label_column
@@ -107,8 +119,11 @@ def inject_noise(
         for column in global_target_columns
     }
 
-    for index, row in controllable_df.iterrows():
+    for index, row in tqdm.tqdm(controllable_df.iterrows()):
         column = random.choice(row["_nsyn_controllable_columns"])
+        if column == label_column or index not in subsampled_indices:
+            controllable_df.at[index, "_nsyn_noisy_injected"] = False
+            continue
         # Pre-compute unique values including '<UNK>'
         possible_values = [
             value for value in target_column_values[column] if value != row[column]
@@ -162,7 +177,17 @@ if __name__ == "__main__":
         default=0.1,
         help="The noise level.",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=2024,
+        help="The random seed.",
+    )
     args = parser.parse_args()
+
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+
     inject_noise(
         dataset_name=args.dataset_name,
         output_version=args.output_version,

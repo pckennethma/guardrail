@@ -1,10 +1,13 @@
 import os
 import re
+import sys
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from pandas.core.groupby.generic import DataFrameGroupBy
+
+sys.path.append(".")
 
 from nsyn.app.ml_backend.analysis import AnalysisContext
 from nsyn.app.ml_backend.auto import get_inference_model
@@ -475,7 +478,7 @@ class Q2Executor:
 
         model_label = inference_engine.inference_model_config.label_column
         df[f"{model_label} [predicted]"] = pred_result
-        grouped_df = df.groupby(f"{model_label} [predicted]", dropna=False)
+        grouped_df = df.groupby(f"{model_label} [predicted]", dropna=True)
         return grouped_df
 
     @staticmethod
@@ -540,6 +543,14 @@ if __name__ == "__main__":
         help="The query to execute.",
     )
 
+    parser.add_argument(
+        "--noisy_level",
+        "-n",
+        type=str,
+        default="05",
+        help="The level of noise to inject.",
+    )
+
     args = parser.parse_args()
 
     if args.query_path is not None and os.path.isdir(args.query_path):
@@ -555,7 +566,9 @@ if __name__ == "__main__":
         for query_path in query_list:
             with open(query_path, "r") as f:
                 logger.info(f"Executing query in {query_path} ...")
-                query = Query2.parse_query(f.read())
+                sql_str = f.read()
+                sql_str = sql_str.replace("noisy", f"noisy_level_{args.noisy_level}")
+                query = Query2.parse_query(sql_str)
                 df = Q2Executor.execute_query(query)
                 logger.info(f"Query: {get_keyword_text(query.main_query)}")
                 logger.info(f"Result df:\n{get_output_df_text(df.to_markdown())}")
@@ -564,7 +577,9 @@ if __name__ == "__main__":
     ) or args.query is not None:
         if args.query_path is not None:
             with open(args.query_path, "r") as f:
-                query = Query2.parse_query(f.read())
+                sql_str = f.read()
+                sql_str = sql_str.replace("noisy", f"noisy_level_{args.noisy_level}")
+                query = Query2.parse_query(sql_str)
         else:
             query = Query2.parse_query(args.query)
         df = Q2Executor.execute_query(query)

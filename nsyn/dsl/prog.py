@@ -1,3 +1,4 @@
+import copy
 from typing import Any, Dict, List, Tuple
 
 import dask.dataframe as dd
@@ -80,6 +81,26 @@ class DSLProg(BaseModel):
         for stmt in self.stmts:
             expected_row.update(stmt.evaluate(input_row))
         return expected_row, expected_row != input_row
+
+    def get_used_stmts(self, input_row: Dict[str, Any]) -> List[DSLStmt]:
+        """
+        Returns the list of DSL statements that are used in evaluating a given row of data.
+
+        Args:
+            input_row (Dict[str, Any]): A dictionary representing a row of data.
+
+        Returns:
+            List[DSLStmt]: A list of DSLStmt instances that are used in evaluating the given row of data.
+        """
+        used_stmts = []
+        for stmt in self.stmts:
+            result = stmt.evaluate(input_row)
+            if result:
+                tmp_dict = copy.deepcopy(input_row)
+                tmp_dict.update(result)
+                if tmp_dict != input_row:
+                    used_stmts.append(stmt)
+        return used_stmts
 
     def evaluate_df(self, df: pd.DataFrame, worker_num: int = 4) -> pd.Series:
         """

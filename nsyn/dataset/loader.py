@@ -6,9 +6,15 @@ import pandas as pd
 _DATASET_PATH = {
     "adult": "datasets/adult.csv",
     "lung_cancer": "datasets/lung_cancer.csv",
-    "insurance": "datasets/insurance.csv",
-    "bird_strikes": "datasets/bird_strikes.csv",
-    "credit_card": "datasets/credit_card.csv",
+    "cylinder-bands": "datasets/cylinder-bands.csv",
+    "diabetes": "datasets/diabetes.csv",
+    "contraceptive": "datasets/contraceptive.csv",
+    "blood-transfusion-service-center": "datasets/blood-transfusion-service-center.csv",
+    "steel-plates-fault": "datasets/steel-plates-fault.csv",
+    "jungle_chess_2pcs_raw_endgame_complete": "datasets/jungle_chess_2pcs_raw_endgame_complete.csv",
+    "telco_customer_churn": "datasets/telco_customer_churn.csv",
+    "bank-marketing": "datasets/bank-marketing.csv",
+    "PhishingWebsites": "datasets/PhishingWebsites.csv",
     "hotel_bookings": "datasets/hotel_bookings.csv",
 }
 

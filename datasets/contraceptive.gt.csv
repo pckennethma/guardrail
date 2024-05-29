@@ -1,0 +1,10 @@
+wife_age,wife_education,husb_education,num_children,wife_religion,wife_working,husb_occupation,living_index,media_exposure,y
+39,3,3,1,0,1,occupation3,4,0,1
+36,4,4,4,0,1,occupation1,4,0,2
+41,4,4,4,0,0,occupation2,4,0,2
+48,4,4,1,0,1,occupation1,4,0,1
+23,4,4,0,0,1,occupation2,4,0,1
+35,4,4,3,0,1,occupation3,4,0,3
+43,4,4,5,0,1,occupation1,4,0,2
+40,4,4,2,0,1,occupation1,4,0,1
+45,3,4,2,0,1,occupation1,4,0,1

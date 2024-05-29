@@ -1,2 +1,2 @@
 SELECT count(*) FROM lung_cancer.noisy WHERE M1 == 'yes' AND lung_cancer.smoke == 'yes' AND lung_cancer.bronc = 'yes'
-M1: lung_cancer-0eff72ea-c55e-4704-8995-99f4bee339b6, autogluon # M1 is a classification model to predict whether the patient is likely short for dyspnea.
+M1: lung_cancer-ed01c678-de74-4f75-ad23-2a506f0ea974, autogluon # M1 is a classification model to predict whether the patient is likely short for dyspnea.
