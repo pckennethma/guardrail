@@ -2,13 +2,10 @@ import argparse
 import os
 import pickle
 import random
-import sys
 from typing import Hashable, Literal
 
 import numpy as np
 import tqdm
-
-sys.path.append(".")
 
 from nsyn.app.ml_backend.auto import get_inference_model
 from nsyn.dataset.loader import get_df_path_with_version, load_ml_data_by_name

@@ -1,10 +1,7 @@
 import argparse
-import sys
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
-
-sys.path.append(".")
 
 from nsyn.dataset.loader import get_df_path, load_data_by_name, load_ml_data_by_name
 from nsyn.util.logger import get_logger

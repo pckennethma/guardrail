@@ -1,13 +1,10 @@
 import os
 import re
-import sys
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from pandas.core.groupby.generic import DataFrameGroupBy
-
-sys.path.append(".")
 
 from nsyn.app.ml_backend.analysis import AnalysisContext
 from nsyn.app.ml_backend.auto import get_inference_model

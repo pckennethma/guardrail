@@ -1,12 +1,10 @@
 import os
-import sys
 from typing import List, Optional
 from uuid import uuid4
 
 import pandas as pd
 from autogluon.tabular import TabularDataset, TabularPredictor
 
-sys.path.append(".")
 from nsyn.dataset.loader import load_ml_data_by_name
 from nsyn.run import run_search
 from nsyn.util.logger import get_logger

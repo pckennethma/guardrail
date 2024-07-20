@@ -96,6 +96,38 @@ class DSLStmt(BaseModel):
             )
         ]
 
+    def force_fit(self, input_data: pd.DataFrame) -> None:
+        """
+        Fits the DSL statement to the provided DataFrame.
+
+        Args:
+            input_data (pd.DataFrame): The DataFrame containing the relevant data.
+
+        Raises:
+            ValueError: If the determinants and dependent are not in the input data.
+            RuntimeError: If the statement is already fit.
+        """
+        cols = self.determinants + [self.dependent]
+        if not set(cols).issubset(input_data.columns):
+            raise ValueError("Determinants and dependent must be in input data")
+
+        if self.branches:
+            raise RuntimeError("Already fit")
+
+        grouped = input_data[cols].groupby(self.determinants)
+        self.branches = [
+            branch
+            for key, sub_df in grouped
+            if (
+                (
+                    branch := self._make_branch(
+                        cast(tuple[str, ...], key), sub_df, 1.0, 0
+                    )
+                )
+                is not None
+            )
+        ]
+
     def _make_branch(
         self,
         key: tuple[str, ...],

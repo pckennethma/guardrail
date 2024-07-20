@@ -1,3 +1,7 @@
 ignore = ["E501", "E722"]
 extend-select = ["I", "B006", "T20"]
+
 [isort]
+
+[per-file-ignores]
+"nsyn/tane/tane.py" = ["E741"]
