@@ -128,9 +128,11 @@ class AutoGluonModel(InferenceModel):
                 f"Model feature columns are {model_feature_cols} which is not a subset of input feature columns: {input_df_cols}."
             )
 
+        # guardrail time
         model_input_df = preprocessing(
             df, self.sanitizer, self.inference_model_config.feature_columns
         )[self.inference_model_config.feature_columns]
+        # ml time
         pred = self.model.predict(model_input_df)
         assert isinstance(pred, pd.Series)
 
