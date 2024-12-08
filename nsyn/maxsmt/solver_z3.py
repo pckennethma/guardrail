@@ -11,12 +11,13 @@ from z3 import (
     If,
     Implies,
     Int,
+    IntVal,
+    ModelRef,
     Not,
     Optimize,
     Or,
     Sum,
     sat,
-    ModelRef
 )
 
 from nsyn.dataset.loader import load_data_by_name
@@ -36,7 +37,7 @@ _MAX_FILTERS = 2
 class SymbolicRow:
     def __init__(self, record: dict[Hashable, Any], columns: Iterable[str]):
         self.record = record
-        self.symbolic_records = {k: i for k, i in record.items()}
+        self.symbolic_records = {k: IntVal(i) for k, i in record.items()}
         self.symbolic_values = [self.symbolic_records[column] for column in columns]
 
     @classmethod
@@ -131,7 +132,8 @@ class SymbolicCondition:
                 )
                 for idx, col in enumerate(columns)
                 for f in self.filters
-            ] + [
+            ]
+            + [
                 And(
                     f["Column_Index"] >= 0,
                     f["Column_Index"] < len(columns),
@@ -173,7 +175,7 @@ class SymbolicBranch:
 
     def unequal_constraint(self, other: SymbolicBranch) -> BoolRef:
         return self.condition.unequal_constraint(other.condition)
-    
+
     def assignment_value_range_constraint(
         self, value_mappings: Dict[str, Dict[int, str]]
     ) -> BoolRef:
@@ -225,7 +227,8 @@ class SymbolicStatement:
             + [
                 branch.condition.value_range_constraint(value_mappings, columns)
                 for branch in self.branches
-            ] + [
+            ]
+            + [
                 branch.assignment_value_range_constraint(value_mappings)
                 for branch in self.branches
             ]
@@ -335,7 +338,7 @@ class SymbolicProgram:
 
     def optimize(self) -> Optional[DSLProg]:
         opt = Optimize()
-        opt.set("timeout", 1800_000)
+        opt.set("timeout", 3600_000 * 24)
         loss_threshold = int(0.01 * len(self.rows))
         logger.info(f"Loss threshold: {loss_threshold}")
         for idx, stmt in enumerate(self.statements):
@@ -391,7 +394,9 @@ class SymbolicProgram:
                         predicates = []
                         for f in branch.condition.filters:
                             if model[f["Enabled"]]:
-                                determinant = self.df.columns[model[f["Column_Index"]].as_long()]
+                                determinant = self.df.columns[
+                                    model[f["Column_Index"]].as_long()
+                                ]
                                 predicates.append(
                                     (
                                         determinant,
