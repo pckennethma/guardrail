@@ -73,7 +73,8 @@ class BaseLearner(ABC):
         """
         ...
 
-    def pd_to_np(self, data: pd.DataFrame) -> tuple[np.ndarray, List[str]]:
+    @staticmethod
+    def pd_to_np(data: pd.DataFrame) -> tuple[np.ndarray, List[str]]:
         """
         Converts a pandas DataFrame to a numpy array by dropping numeric columns and converting
         categorical values to integers.
