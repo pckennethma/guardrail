@@ -2,8 +2,6 @@
 
 This document provides a high level overview of the Guardrail project.
 
-Guardrail is a research artifact for the paper *"Guardrail: Solidifying ML-Integrated SQL Queries with Automated Integrity Constraint Synthesis"*. The repository contains tooling for error detection in datasets and utilities for executing extended SQL queries that integrate machine learning models.
-
 ## Repository Layout
 
 - **datasets/** – Example datasets and pre-generated splits.
