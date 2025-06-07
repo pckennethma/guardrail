@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-	<em>This is a research artifact for submission "Guardrail: Solidifying ML-Integrated SQL Queries with Automated Integrity Constraint Synthesis".</em>
+	<em>This is a research artifact for paper "Guardrail: Automated Integrity Constraint Synthesis From Noisy Data" (SIGMOD 2026).</em>
 </p>
 
 <p align="center">
@@ -89,7 +89,7 @@ To get started with Guardrail, follow these steps:
 
 ## 📖 Documentation
 
-Documentation is currently under development. Please stay tuned for updates.
+Documentation is currently under development. Please find an overview in [doc](docs/overview.md).
 
 <p align="center">
     <em>Thank you for using Guardrail!</em>
